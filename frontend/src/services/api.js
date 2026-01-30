@@ -1,0 +1,42 @@
+import axios from 'axios';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Authentication
+export const getAuthUrl = () => api.get('/auth/url');
+export const completeAuth = (code) => api.post('/auth/callback', { code });
+export const getAuthStatus = () => api.get('/auth/status');
+export const refreshToken = () => api.post('/auth/refresh');
+
+// Configuration
+export const getConfig = () => api.get('/config');
+
+// Tasks
+export const getTasks = () => api.get('/tasks');
+export const getTask = (id) => api.get(`/tasks/${id}`);
+export const createTask = (task) => api.post('/tasks', task);
+export const updateTask = (id, task) => api.put(`/tasks/${id}`, task);
+export const deleteTask = (id) => api.delete(`/tasks/${id}`);
+export const toggleTask = (id) => api.patch(`/tasks/${id}/toggle`);
+export const executeTask = (id) => api.post(`/tasks/${id}/execute`);
+
+// Logs
+export const getLogs = (taskId = null, limit = 50) => {
+  const params = new URLSearchParams();
+  if (taskId) params.append('task_id', taskId);
+  if (limit) params.append('limit', limit);
+  return api.get(`/logs?${params.toString()}`);
+};
+
+// Powerwall Status
+export const getPowerwallStatus = () => api.get('/powerwall/status');
+export const getEnergySites = () => api.get('/powerwall/sites');
+
+export default api;
