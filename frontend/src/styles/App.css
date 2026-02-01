@@ -29,7 +29,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-code, pre {
+code,
+pre {
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -220,6 +221,7 @@ code, pre {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -452,6 +454,7 @@ code, pre {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -922,4 +925,78 @@ code, pre {
   .logs-table-container {
     overflow-x: scroll;
   }
+}
+
+/* Token Status Widget */
+.token-status-widget {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.token-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.token-status-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.token-status-indicator {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.token-status-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.token-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.token-detail .detail-label {
+  color: var(--text-secondary);
+}
+
+.token-detail .detail-value {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.token-detail.warning {
+  background: rgba(245, 158, 11, 0.1);
+  padding: 0.5rem;
+  border-radius: 6px;
+  border-left: 3px solid var(--warning);
+}
+
+.token-detail.error {
+  background: rgba(239, 68, 68, 0.1);
+  padding: 0.5rem;
+  border-radius: 6px;
+  border-left: 3px solid var(--error);
+  color: var(--error);
+  font-weight: 600;
+}
+
+.btn-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
 }

@@ -15,6 +15,7 @@ const api = axios.create({
 export const getAuthUrl = () => api.get("/auth/url");
 export const completeAuth = (code) => api.post("/auth/callback", { code });
 export const getAuthStatus = () => api.get("/auth/status");
+export const getTokenStatus = () => api.get("/auth/token-status");
 export const refreshToken = () => api.post("/auth/refresh");
 
 // Configuration

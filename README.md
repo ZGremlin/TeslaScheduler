@@ -4,22 +4,27 @@ A full-stack application for automating Tesla Powerwall operation mode changes a
 
 ## Features
 
-- 🔐 **Secure Authentication**: Connect securely to your local Tesla Powerwall gateway
+- 🔐 **Secure Authentication**: OAuth 2.0 with PKCE for secure access to Tesla's cloud API
+- 🔄 **Automatic Token Refresh**: Tokens automatically refresh 2 hours before expiration with retry logic
 - ⏰ **Scheduled Tasks**: Create daily scheduled tasks to automate Powerwall settings
 - ⚡ **Real-time Status**: Monitor your Powerwall's battery level, power flow, and operation mode
 - 📊 **Execution Logs**: Track task execution history with success/failure status
 - 🎨 **Modern UI**: Beautiful, responsive interface with dark mode design
-- 🔄 **Automatic Token Management**: Handles authentication token storage and expiration
+- 🔧 **Robust Error Handling**: Automatic retry every 5 minutes if token refresh fails
 
 ## System Architecture
 
 ### Backend (Node.js + Express)
+
 - RESTful API for managing tasks and authentication
 - SQLite database for persistent storage
 - Node-cron for task scheduling
-- Direct local API integration with Tesla Powerwall
+- **Automatic token refresh manager** - Refreshes tokens 2 hours before expiration
+- **Retry logic** - Retries every 5 minutes if refresh fails
+- Direct integration with Tesla's public cloud API
 
 ### Frontend (React)
+
 - Single-page application with responsive design
 - Real-time status monitoring
 - Task management interface
@@ -54,6 +59,7 @@ npm run init-db
 ```
 
 This creates the SQLite database with the following tables:
+
 - `auth_tokens` - Stores Tesla API authentication tokens
 - `scheduled_tasks` - Stores scheduled automation tasks
 - `task_logs` - Logs task execution history
@@ -68,6 +74,7 @@ npm start
 The backend API will start on `http://localhost:3001`
 
 For development with auto-restart:
+
 ```bash
 npm run dev
 ```
@@ -111,6 +118,51 @@ The React app will start on `http://localhost:3000` and open in your browser.
 
 The authentication uses OAuth 2.0 with PKCE for secure access to Tesla's cloud API. Tokens are automatically refreshed when they expire.
 
+## Token Refresh System
+
+The application includes an intelligent token refresh manager that ensures uninterrupted access to your Powerwall:
+
+### Automatic Refresh
+
+- **Proactive Refresh**: Tokens are automatically refreshed **2 hours before expiration**
+- **No Manual Intervention**: You never need to worry about expired tokens
+- **Seamless Operation**: Tasks continue running without interruption
+
+### Retry Logic
+
+- **Automatic Retry**: If token refresh fails, the system retries every **5 minutes**
+- **Persistent**: Will continue retrying for up to **8 hours** (100 attempts)
+- **Logging**: All refresh attempts and failures are logged to the console
+
+### Monitoring
+
+- **Token Status Widget**: Displays current token health on the Tasks page
+- **Shows**:
+  - Time until expiration
+  - Time until automatic refresh
+  - Number of retry attempts (if any)
+  - Current refresh status
+- **Manual Refresh**: Button to manually trigger token refresh if needed
+
+### Console Logging
+
+The backend logs all token refresh activity:
+
+```
+Token refresh scheduled for: 1/15/2024, 10:30:00 AM
+Time until refresh: 120 minutes
+🔄 Refreshing authentication token...
+✅ Token refreshed successfully
+   New token expires at: 1/15/2024, 8:30:00 PM
+```
+
+If refresh fails:
+
+```
+❌ Token refresh failed: [error message]
+⏳ Will retry in 5 minutes (attempt 1/100)
+```
+
 ## Usage
 
 ### Creating a Scheduled Task
@@ -119,7 +171,7 @@ The authentication uses OAuth 2.0 with PKCE for secure access to Tesla's cloud A
 2. Fill in the task details:
    - **Task Name**: Descriptive name (e.g., "Morning Solar Mode")
    - **Execution Time**: Time to run daily (24-hour format)
-   - **Operation Mode**: 
+   - **Operation Mode**:
      - **Self-Powered**: Maximizes solar self-consumption
      - **Time-Based Control**: Optimizes for time-of-use rates
    - **Backup Reserve**: Minimum battery percentage to reserve (0-100%)
@@ -141,15 +193,19 @@ The authentication uses OAuth 2.0 with PKCE for secure access to Tesla's cloud A
 ## API Endpoints
 
 ### Authentication
+
 - `GET /api/auth/url` - Get OAuth authorization URL
 - `POST /api/auth/callback` - Exchange authorization code for tokens
 - `GET /api/auth/status` - Check authentication status
-- `POST /api/auth/refresh` - Refresh expired access token
+- `GET /api/auth/token-status` - Get detailed token status (expiry, refresh schedule, retry count)
+- `POST /api/auth/refresh` - Manually trigger token refresh
 
 ### Configuration
+
 - `GET /api/config` - Get current site configuration
 
 ### Tasks
+
 - `GET /api/tasks` - Get all tasks
 - `GET /api/tasks/:id` - Get specific task
 - `POST /api/tasks` - Create new task
@@ -159,15 +215,18 @@ The authentication uses OAuth 2.0 with PKCE for secure access to Tesla's cloud A
 - `POST /api/tasks/:id/execute` - Execute task immediately
 
 ### Logs
+
 - `GET /api/logs` - Get execution logs (supports filtering by task_id)
 
 ### Powerwall
+
 - `GET /api/powerwall/sites` - List all energy sites
 - `GET /api/powerwall/status` - Get current Powerwall status
 
 ## Database Schema
 
 ### auth_tokens
+
 ```sql
 CREATE TABLE auth_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,6 +239,7 @@ CREATE TABLE auth_tokens (
 ```
 
 ### scheduled_tasks
+
 ```sql
 CREATE TABLE scheduled_tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -194,6 +254,7 @@ CREATE TABLE scheduled_tasks (
 ```
 
 ### task_logs
+
 ```sql
 CREATE TABLE task_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,6 +267,7 @@ CREATE TABLE task_logs (
 ```
 
 ### powerwall_config
+
 ```sql
 CREATE TABLE powerwall_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,18 +280,21 @@ CREATE TABLE powerwall_config (
 ## Troubleshooting
 
 ### Authentication Fails
+
 - Ensure you're logging in with your Tesla account (not local gateway)
 - Copy the entire authorization code from the URL after `code=`
 - Make sure you complete the authorization in the popup window
 - Try restarting the authentication flow if the code expired
 
 ### Tasks Not Executing
+
 - Verify the task is enabled (green "Active" badge)
 - Check the Execution Logs for error messages
 - Tokens are automatically refreshed, but check auth status
 - Verify your Tesla account has access to the Powerwall
 
 ### Cannot Connect to Backend
+
 - Ensure the backend server is running on port 3001
 - Check for port conflicts
 - Review backend console logs for errors
@@ -248,12 +313,14 @@ CREATE TABLE powerwall_config (
 ## Development
 
 ### Backend Development
+
 ```bash
 cd backend
 npm run dev  # Uses nodemon for auto-restart
 ```
 
 ### Frontend Development
+
 ```bash
 cd frontend
 npm start  # React development server with hot reload
@@ -262,6 +329,7 @@ npm start  # React development server with hot reload
 ### Building for Production
 
 Frontend:
+
 ```bash
 cd frontend
 npm run build
@@ -272,6 +340,7 @@ This creates an optimized production build in the `build` folder.
 ## Technology Stack
 
 ### Backend
+
 - **Express.js** - Web framework
 - **SQLite3** - Database
 - **node-cron** - Task scheduling
@@ -279,6 +348,7 @@ This creates an optimized production build in the `build` folder.
 - **CORS** - Cross-origin resource sharing
 
 ### Frontend
+
 - **React** - UI framework
 - **Axios** - API client
 - **CSS3** - Modern styling with CSS Grid/Flexbox
@@ -290,6 +360,7 @@ This project is for personal use. Please respect Tesla's terms of service when u
 ## Contributing
 
 Contributions are welcome! Please follow these guidelines:
+
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
@@ -299,6 +370,7 @@ Contributions are welcome! Please follow these guidelines:
 ## Support
 
 For issues or questions:
+
 1. Check the Execution Logs for error details
 2. Review backend console output
 3. Ensure all dependencies are installed correctly

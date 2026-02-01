@@ -6,6 +6,7 @@ require("dotenv").config();
 const DatabaseService = require("./database");
 const TeslaAPI = require("./teslaAPI");
 const TaskScheduler = require("./taskScheduler");
+const TokenRefreshManager = require("./tokenRefreshManager");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,12 +18,17 @@ app.use(bodyParser.json());
 // Initialize services
 const db = new DatabaseService();
 const taskScheduler = new TaskScheduler();
+let tokenRefreshManager = null;
 
 // Initialize database and scheduler
 (async () => {
 	try {
 		await db.connect();
 		await taskScheduler.initialize();
+
+		// Initialize token refresh manager
+		tokenRefreshManager = await new TokenRefreshManager().initialize();
+
 		console.log("Services initialized successfully");
 	} catch (error) {
 		console.error("Failed to initialize services:", error);
@@ -86,6 +92,12 @@ app.post("/api/auth/callback", async (req, res) => {
 		delete global.authVerifier;
 		delete global.authState;
 
+		// Schedule token refresh
+		if (tokenRefreshManager) {
+			await tokenRefreshManager.scheduleNextRefresh();
+			console.log("Token refresh scheduled after authentication");
+		}
+
 		res.json({
 			success: true,
 			message: "Authentication successful",
@@ -124,21 +136,59 @@ app.get("/api/auth/status", async (req, res) => {
 // Refresh token
 app.post("/api/auth/refresh", async (req, res) => {
 	try {
-		const authData = await db.getAuthToken();
+		if (tokenRefreshManager) {
+			await tokenRefreshManager.forceRefresh();
+			res.json({
+				success: true,
+				message: "Token refresh initiated",
+			});
+		} else {
+			const authData = await db.getAuthToken();
 
-		if (!authData || !authData.refresh_token) {
-			return res.status(401).json({ error: "No refresh token available" });
+			if (!authData || !authData.refresh_token) {
+				return res.status(401).json({ error: "No refresh token available" });
+			}
+
+			const teslaAPI = new TeslaAPI();
+			const newTokens = await teslaAPI.refreshAccessToken(authData.refresh_token);
+
+			await db.saveAuthToken(newTokens.access_token, newTokens.refresh_token, newTokens.expires_at);
+
+			res.json({
+				success: true,
+				expires_at: newTokens.expires_at,
+			});
 		}
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
 
-		const teslaAPI = new TeslaAPI();
-		const newTokens = await teslaAPI.refreshAccessToken(authData.refresh_token);
+// Get detailed token status
+app.get("/api/auth/token-status", async (req, res) => {
+	try {
+		if (tokenRefreshManager) {
+			const status = await tokenRefreshManager.getTokenStatus();
+			res.json(status);
+		} else {
+			const authData = await db.getAuthToken();
 
-		await db.saveAuthToken(newTokens.access_token, newTokens.refresh_token, newTokens.expires_at);
+			if (!authData || !authData.access_token) {
+				return res.json({ authenticated: false });
+			}
 
-		res.json({
-			success: true,
-			expires_at: newTokens.expires_at,
-		});
+			const now = Date.now();
+			const expiresAt = authData.expires_at;
+			const timeUntilExpiry = expiresAt - now;
+
+			res.json({
+				authenticated: timeUntilExpiry > 0,
+				expires_at: new Date(expiresAt).toISOString(),
+				expires_in_minutes: Math.round(timeUntilExpiry / 1000 / 60),
+				is_valid: timeUntilExpiry > 0,
+				has_refresh_token: !!authData.refresh_token,
+			});
+		}
 	} catch (error) {
 		res.status(500).json({ error: error.message });
 	}
@@ -317,7 +367,7 @@ app.get("/api/powerwall/sites", async (req, res) => {
 // Get Powerwall status
 app.get("/api/powerwall/status", async (req, res) => {
 	try {
-		let authData = await db.getAuthToken();
+		const authData = await db.getAuthToken();
 		const config = await db.getPowerwallConfig();
 
 		if (!authData || !authData.access_token) {
@@ -328,12 +378,11 @@ app.get("/api/powerwall/status", async (req, res) => {
 			return res.status(400).json({ error: "Powerwall site not configured" });
 		}
 
-		// Refresh token if expired
-		if (Date.now() >= authData.expires_at && authData.refresh_token) {
-			const teslaAPI = new TeslaAPI();
-			const newTokens = await teslaAPI.refreshAccessToken(authData.refresh_token);
-			await db.saveAuthToken(newTokens.access_token, newTokens.refresh_token, newTokens.expires_at);
-			authData = newTokens;
+		// Check if token is expired
+		if (Date.now() >= authData.expires_at) {
+			return res.status(401).json({
+				error: "Token expired. Automatic refresh in progress. Please try again in a moment.",
+			});
 		}
 
 		const teslaAPI = new TeslaAPI();
@@ -461,6 +510,9 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on("SIGINT", async () => {
 	console.log("\nShutting down gracefully...");
+	if (tokenRefreshManager) {
+		await tokenRefreshManager.shutdown();
+	}
 	await taskScheduler.shutdown();
 	await db.close();
 	process.exit(0);
@@ -468,6 +520,9 @@ process.on("SIGINT", async () => {
 
 process.on("SIGTERM", async () => {
 	console.log("\nShutting down gracefully...");
+	if (tokenRefreshManager) {
+		await tokenRefreshManager.shutdown();
+	}
 	await taskScheduler.shutdown();
 	await db.close();
 	process.exit(0);
