@@ -97,7 +97,7 @@ app.post("/api/auth/callback", async (req, res) => {
 
 		// Save first site as default (in production, let user choose)
 		const firstSite = sites[0];
-		await db.savePowerwallConfig(firstSite.energy_site_id, firstSite.site_name);
+		await db.savePowerwallConfig(firstSite.energy_site_id.toString(), firstSite.site_name);
 
 		authLogger.logSiteConfigured(firstSite.energy_site_id, firstSite.site_name);
 		authLogger.logAuthSuccess("oauth_user", tokens.expires_at);
