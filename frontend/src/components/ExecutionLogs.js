@@ -84,9 +84,11 @@ function ExecutionLogs({ tasks }) {
 								<tr key={log.id}>
 									<td>
 										<div className="log-datetime">
-											<div>{new Date(`${log.executed_at} UTC`).toLocaleDateString()}</div>
+											<div>
+												{new Date(log.executed_at.replace(" ", "T") + "Z").toLocaleDateString()}
+											</div>
 											<div className="log-time">
-												{new Date(`${log.executed_at} UTC`).toLocaleTimeString()}
+												{new Date(log.executed_at.replace(" ", "T") + "Z").toLocaleTimeString()}
 											</div>
 										</div>
 									</td>
