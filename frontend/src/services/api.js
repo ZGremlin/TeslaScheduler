@@ -34,7 +34,7 @@ export const toggleTask = (id) => api.patch(`/tasks/${id}/toggle`);
 export const executeTask = (id) => api.post(`/tasks/${id}/execute`);
 
 // Logs
-export const getLogs = (taskId = null, limit = 50) => {
+export const getLogs = (taskId = null, limit = 100) => {
 	const params = new URLSearchParams();
 	if (taskId) params.append("task_id", taskId);
 	if (limit) params.append("limit", limit);
