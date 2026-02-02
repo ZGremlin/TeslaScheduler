@@ -200,7 +200,15 @@ app.get("/api/auth/token-status", async (req, res) => {
 app.get("/api/tasks", async (req, res) => {
 	try {
 		const tasks = await db.getAllTasks();
-		res.json(tasks);
+
+		// Add retry status to each task
+		const retryingTasks = taskScheduler.getRetryStatus();
+		const tasksWithRetryStatus = tasks.map((task) => ({
+			...task,
+			is_retrying: retryingTasks.includes(task.id),
+		}));
+
+		res.json(tasksWithRetryStatus);
 	} catch (error) {
 		res.status(500).json({ error: error.message });
 	}

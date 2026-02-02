@@ -7,10 +7,11 @@ A full-stack application for automating Tesla Powerwall operation mode changes a
 - 🔐 **Secure Authentication**: OAuth 2.0 with PKCE for secure access to Tesla's cloud API
 - 🔄 **Automatic Token Refresh**: Tokens automatically refresh 2 hours before expiration with retry logic
 - ⏰ **Scheduled Tasks**: Create daily scheduled tasks to automate Powerwall settings
+- 🔁 **Task Retry Logic**: Failed tasks automatically retry every 10 minutes until next scheduled time
 - ⚡ **Real-time Status**: Monitor your Powerwall's battery level, power flow, and operation mode
 - 📊 **Execution Logs**: Track task execution history with success/failure status
 - 🎨 **Modern UI**: Beautiful, responsive interface with dark mode design
-- 🔧 **Robust Error Handling**: Automatic retry every 5 minutes if token refresh fails
+- 🔧 **Robust Error Handling**: Automatic retry for both authentication and task execution
 
 ## System Architecture
 
@@ -163,6 +164,65 @@ If refresh fails:
 ⏳ Will retry in 5 minutes (attempt 1/100)
 ```
 
+## Task Retry System
+
+The scheduler includes intelligent retry logic to ensure tasks eventually succeed even if they fail initially:
+
+### Automatic Retry on Failure
+
+- **Immediate Logging**: Failures are logged immediately with error details
+- **Retry Every 10 Minutes**: Failed tasks automatically retry every 10 minutes
+- **Continues Until Success**: Retries continue until the task succeeds
+- **Smart Cutoff**: Stops retrying when the next scheduled execution time approaches
+
+### How It Works
+
+```
+Scheduled time: 6:00 AM
+├──────┬──────┬──────┬──────┬──────┬──────┤
+6:00   6:10   6:20   6:30   6:40   6:50   Next day 6:00
+ ↓      ↓      ↓      ↓      ✓
+Fail   Retry  Retry  Retry  Success
+```
+
+**Example Timeline:**
+
+1. **6:00 AM**: Task scheduled to run, execution fails (network issue)
+2. **6:10 AM**: Automatic retry #1, still fails
+3. **6:20 AM**: Automatic retry #2, still fails
+4. **6:30 AM**: Automatic retry #3, succeeds! ✓
+5. Retry timer cleared, waits for next scheduled time (tomorrow 6:00 AM)
+
+### Retry Behavior
+
+**When Task Fails:**
+
+- Error is logged to execution logs with timestamp and reason
+- System calculates time until next scheduled execution
+- If more than 10 minutes away, schedules retry in 10 minutes
+- If less than 10 minutes away, waits for next scheduled time
+
+**When Task Succeeds:**
+
+- All retry timers for that task are cleared
+- Task waits for next scheduled execution time
+- Success is logged to execution logs
+
+**Visual Indicator:**
+
+- Tasks currently in retry mode show a **🔄 Retrying** badge
+- Badge pulses to indicate active retry status
+- Disappears when task succeeds or is disabled
+
+### Console Output
+
+```bash
+❌ Task 1 failed: Request failed with status code 503
+⏳ Task 1 will retry at 6:10:00 AM
+🔁 Retrying task 1: "Morning Solar Mode"
+✅ Task 1 executed successfully
+```
+
 ## Usage
 
 ### Creating a Scheduled Task
@@ -288,10 +348,11 @@ CREATE TABLE powerwall_config (
 
 ### Tasks Not Executing
 
-- Verify the task is enabled (green "Active" badge)
-- Check the Execution Logs for error messages
-- Tokens are automatically refreshed, but check auth status
+- Check if task shows **🔄 Retrying** badge (indicates automatic retry in progress)
+- Review Execution Logs for specific error messages
+- Failed tasks automatically retry every 10 minutes
 - Verify your Tesla account has access to the Powerwall
+- If task keeps failing, check Powerwall is online and accessible
 
 ### Cannot Connect to Backend
 

@@ -5,8 +5,12 @@ const TeslaAPI = require("./teslaAPI");
 class TaskScheduler {
 	constructor() {
 		this.scheduledJobs = new Map();
+		this.retryTimers = new Map();
 		this.db = new DatabaseService();
 		this.teslaAPI = null;
+
+		// Retry failed tasks every 10 minutes
+		this.RETRY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
 	}
 
 	async initialize() {
@@ -35,6 +39,9 @@ class TaskScheduler {
 			this.scheduledJobs.delete(task.id);
 		}
 
+		// Clear any existing retry timer
+		this.clearRetryTimer(task.id);
+
 		// Parse time (format: "HH:MM")
 		const [hours, minutes] = task.time.split(":");
 
@@ -43,6 +50,8 @@ class TaskScheduler {
 
 		// Schedule the task
 		const job = cron.schedule(cronExpression, async () => {
+			// Clear any retry timer when scheduled time arrives
+			this.clearRetryTimer(task.id);
 			await this.executeTask(task);
 		});
 
@@ -55,6 +64,51 @@ class TaskScheduler {
 			this.scheduledJobs.get(taskId).stop();
 			this.scheduledJobs.delete(taskId);
 			console.log(`Unscheduled task ${taskId}`);
+		}
+
+		// Also clear any retry timer
+		this.clearRetryTimer(taskId);
+	}
+
+	clearRetryTimer(taskId) {
+		if (this.retryTimers.has(taskId)) {
+			clearTimeout(this.retryTimers.get(taskId));
+			this.retryTimers.delete(taskId);
+		}
+	}
+
+	scheduleRetry(task) {
+		// Clear existing retry timer first
+		this.clearRetryTimer(task.id);
+
+		// Calculate when the next scheduled execution is
+		const [hours, minutes] = task.time.split(":");
+		const now = new Date();
+		const nextScheduled = new Date();
+		nextScheduled.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+		// If the scheduled time today has passed, it's tomorrow
+		if (nextScheduled <= now) {
+			nextScheduled.setDate(nextScheduled.getDate() + 1);
+		}
+
+		const timeUntilNextScheduled = nextScheduled.getTime() - now.getTime();
+
+		// Only schedule retry if we have more than 10 minutes until next scheduled time
+		if (timeUntilNextScheduled > this.RETRY_INTERVAL_MS) {
+			const retryTimer = setTimeout(async () => {
+				console.log(`🔁 Retrying task ${task.id}: "${task.name}"`);
+				await this.executeTask(task);
+			}, this.RETRY_INTERVAL_MS);
+
+			this.retryTimers.set(task.id, retryTimer);
+
+			const retryTime = new Date(Date.now() + this.RETRY_INTERVAL_MS);
+			console.log(`⏳ Task ${task.id} will retry at ${retryTime.toLocaleTimeString()}`);
+		} else {
+			console.log(
+				`⏭️  Task ${task.id} will not retry - next scheduled time is soon (${Math.round(timeUntilNextScheduled / 1000 / 60)} minutes)`,
+			);
 		}
 	}
 
@@ -90,10 +144,16 @@ class TaskScheduler {
 
 			// Log success
 			await this.db.logTaskExecution(task.id, "success");
-			console.log(`Task ${task.id} executed successfully`);
+			console.log(`✅ Task ${task.id} executed successfully`);
+
+			// Clear any retry timer on success
+			this.clearRetryTimer(task.id);
 		} catch (error) {
-			console.error(`Task ${task.id} failed:`, error.message);
+			console.error(`❌ Task ${task.id} failed:`, error.message);
 			await this.db.logTaskExecution(task.id, "failed", error.message);
+
+			// Schedule retry on failure
+			this.scheduleRetry(task);
 		}
 	}
 
@@ -103,6 +163,12 @@ class TaskScheduler {
 			job.stop();
 		}
 		this.scheduledJobs.clear();
+
+		// Clear all retry timers
+		for (const [taskId, timer] of this.retryTimers) {
+			clearTimeout(timer);
+		}
+		this.retryTimers.clear();
 
 		// Reload and reschedule tasks
 		await this.loadAndScheduleTasks();
@@ -115,9 +181,23 @@ class TaskScheduler {
 		}
 		this.scheduledJobs.clear();
 
+		// Clear all retry timers
+		for (const [taskId, timer] of this.retryTimers) {
+			clearTimeout(timer);
+		}
+		this.retryTimers.clear();
+
 		// Close database connection
 		await this.db.close();
 		console.log("Task scheduler shut down");
+	}
+
+	getRetryStatus() {
+		const retryingTasks = [];
+		for (const [taskId, timer] of this.retryTimers) {
+			retryingTasks.push(taskId);
+		}
+		return retryingTasks;
 	}
 }
 
