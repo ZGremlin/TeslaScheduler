@@ -479,6 +479,11 @@ pre {
   max-width: 700px;
 }
 
+.modal-xlarge {
+  max-width: 1200px;
+  max-height: 90vh;
+}
+
 @keyframes slideUp {
   from {
     opacity: 0;
@@ -1029,4 +1034,146 @@ pre {
 .btn-small {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
+}
+
+.btn-danger {
+  background: var(--error);
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+/* Auth Logs Modal */
+.log-stats {
+  display: flex;
+  gap: 2rem;
+  padding: 1rem;
+  background: var(--background);
+  border-radius: 10px;
+  margin-bottom: 1.5rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.log-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  background: var(--surface-light);
+  border-radius: 10px;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.control-group label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.control-select {
+  padding: 0.5rem 0.75rem;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.logs-container {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.log-entries {
+  padding: 1rem;
+}
+
+.log-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-entry:hover {
+  background: var(--surface-light);
+}
+
+.log-timestamp {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.log-level {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.log-event {
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.log-details {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  flex: 1;
+  word-break: break-all;
+}
+
+.log-entry pre {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-all;
 }

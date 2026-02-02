@@ -1,5 +1,6 @@
 const DatabaseService = require("./database");
 const TeslaAPI = require("./teslaAPI");
+const authLogger = require("./authLogger");
 
 class TokenRefreshManager {
 	constructor() {
@@ -79,6 +80,7 @@ class TokenRefreshManager {
 
 		this.isRefreshing = true;
 		console.log("🔄 Refreshing authentication token...");
+		authLogger.logTokenRefreshAttempt();
 
 		try {
 			const authData = await this.db.getAuthToken();
@@ -101,6 +103,8 @@ class TokenRefreshManager {
 			console.log("✅ Token refreshed successfully");
 			console.log(`   New token expires at: ${expiresAt.toLocaleString()}`);
 
+			authLogger.logTokenRefreshSuccess(newTokens.expires_at);
+
 			// Reset retry counter on success
 			this.retryCount = 0;
 
@@ -108,6 +112,7 @@ class TokenRefreshManager {
 			await this.scheduleNextRefresh();
 		} catch (error) {
 			console.error("❌ Token refresh failed:", error.message);
+			authLogger.logTokenRefreshFailure(error, this.retryCount + 1);
 
 			// Increment retry counter
 			this.retryCount++;
@@ -117,7 +122,10 @@ class TokenRefreshManager {
 				this.scheduleRetry();
 			} else {
 				console.error("⚠️  Max retry attempts reached. Manual re-authentication required.");
-				// Could send notification/alert here
+				authLogger.error("TOKEN_REFRESH_MAX_RETRIES", {
+					retry_count: this.retryCount,
+					error: "Max retry attempts reached",
+				});
 			}
 		} finally {
 			this.isRefreshing = false;

@@ -6,6 +6,7 @@ A full-stack application for automating Tesla Powerwall operation mode changes a
 
 - 🔐 **Secure Authentication**: OAuth 2.0 with PKCE for secure access to Tesla's cloud API
 - 🔄 **Automatic Token Refresh**: Tokens automatically refresh 2 hours before expiration with retry logic
+- 📋 **Authentication Logging**: All authentication events logged to file with viewing interface
 - ⏰ **Scheduled Tasks**: Create daily scheduled tasks to automate Powerwall settings
 - 🔁 **Task Retry Logic**: Failed tasks automatically retry every 10 minutes until next scheduled time
 - ⚡ **Real-time Status**: Monitor your Powerwall's battery level, power flow, and operation mode
@@ -163,6 +164,30 @@ If refresh fails:
 ❌ Token refresh failed: [error message]
 ⏳ Will retry in 5 minutes (attempt 1/100)
 ```
+
+## Authentication Logging
+
+All authentication-related events are automatically logged to files for auditing and troubleshooting. Click the **📋 Logs** button in the top menu to view logs in real-time.
+
+### What Gets Logged
+
+- Authorization URL generation
+- OAuth code exchange (success/failure)
+- Site configuration
+- Token refresh attempts and results
+- All authentication errors with details
+
+### Log Format
+
+```
+[timestamp] [level] [event] {json_details}
+```
+
+### Viewing Logs
+
+- **In UI**: Click "📋 Logs" button → Real-time view with auto-refresh
+- **File**: `backend/logs/auth.log` (rotates at 10MB, keeps 5 files)
+- **Console**: All auth events also logged to backend console
 
 ## Task Retry System
 

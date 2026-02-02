@@ -17,6 +17,9 @@ export const completeAuth = (code) => api.post("/auth/callback", { code });
 export const getAuthStatus = () => api.get("/auth/status");
 export const getTokenStatus = () => api.get("/auth/token-status");
 export const refreshToken = () => api.post("/auth/refresh");
+export const getAuthLogs = (lines = 100) => api.get(`/auth/logs?lines=${lines}`);
+export const getAuthLogStats = () => api.get("/auth/logs/stats");
+export const clearAuthLogs = () => api.delete("/auth/logs");
 
 // Configuration
 export const getConfig = () => api.get("/config");

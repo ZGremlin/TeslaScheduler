@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./styles/App.css";
 import AuthenticationModal from "./components/AuthenticationModal";
+import AuthLogsModal from "./components/AuthLogsModal";
 import TaskList from "./components/TaskList";
 import TaskModal from "./components/TaskModal";
 import PowerwallStatus from "./components/PowerwallStatus";
@@ -10,6 +11,7 @@ import * as api from "./services/api";
 
 function App() {
 	const [showAuthModal, setShowAuthModal] = useState(false);
+	const [showAuthLogsModal, setShowAuthLogsModal] = useState(false);
 	const [showTaskModal, setShowTaskModal] = useState(false);
 	const [editingTask, setEditingTask] = useState(null);
 	const [tasks, setTasks] = useState([]);
@@ -186,6 +188,13 @@ function App() {
 								{isAuthenticated ? "✓ Authenticated" : "✗ Not Authenticated"}
 							</div>
 						</div>
+						<button
+							className="btn btn-secondary btn-small"
+							onClick={() => setShowAuthLogsModal(true)}
+							title="View Authentication Logs"
+						>
+							📋 Logs
+						</button>
 						{!isAuthenticated && (
 							<button className="btn btn-primary" onClick={() => setShowAuthModal(true)}>
 								🔐 Login
@@ -261,6 +270,8 @@ function App() {
 			{showAuthModal && (
 				<AuthenticationModal onLogin={handleLogin} onClose={() => setShowAuthModal(false)} />
 			)}
+
+			{showAuthLogsModal && <AuthLogsModal onClose={() => setShowAuthLogsModal(false)} />}
 
 			{showTaskModal && (
 				<TaskModal

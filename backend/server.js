@@ -7,6 +7,7 @@ const DatabaseService = require("./database");
 const TeslaAPI = require("./teslaAPI");
 const TaskScheduler = require("./taskScheduler");
 const TokenRefreshManager = require("./tokenRefreshManager");
+const authLogger = require("./authLogger");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -40,6 +41,8 @@ let tokenRefreshManager = null;
 // Get OAuth authorization URL
 app.get("/api/auth/url", async (req, res) => {
 	try {
+		authLogger.logAuthorizationUrlGenerated();
+
 		const teslaAPI = new TeslaAPI();
 		const authData = teslaAPI.getAuthorizationUrl();
 
@@ -52,6 +55,7 @@ app.get("/api/auth/url", async (req, res) => {
 			instructions: "Visit this URL to authorize the application",
 		});
 	} catch (error) {
+		authLogger.error("AUTHORIZATION_URL_ERROR", { error: error.message });
 		res.status(500).json({ error: error.message });
 	}
 });
@@ -62,17 +66,23 @@ app.post("/api/auth/callback", async (req, res) => {
 		const { code } = req.body;
 
 		if (!code) {
+			authLogger.error("CODE_EXCHANGE_ERROR", { error: "No authorization code provided" });
 			return res.status(400).json({ error: "Authorization code is required" });
 		}
 
 		if (!global.authVerifier) {
+			authLogger.error("CODE_EXCHANGE_ERROR", { error: "No authorization session found" });
 			return res
 				.status(400)
 				.json({ error: "No authorization session found. Please restart the auth flow." });
 		}
 
+		authLogger.logCodeExchangeAttempt();
+
 		const teslaAPI = new TeslaAPI();
 		const tokens = await teslaAPI.exchangeCodeForToken(code, global.authVerifier);
+
+		authLogger.logCodeExchangeSuccess();
 
 		// Save tokens
 		await db.saveAuthToken(tokens.access_token, tokens.refresh_token, tokens.expires_at);
@@ -81,12 +91,16 @@ app.post("/api/auth/callback", async (req, res) => {
 		const sites = await teslaAPI.getEnergySites(tokens.access_token);
 
 		if (sites.length === 0) {
+			authLogger.warn("NO_SITES_FOUND", {});
 			return res.status(404).json({ error: "No Powerwall sites found on this account" });
 		}
 
 		// Save first site as default (in production, let user choose)
 		const firstSite = sites[0];
 		await db.savePowerwallConfig(firstSite.energy_site_id, firstSite.site_name);
+
+		authLogger.logSiteConfigured(firstSite.energy_site_id, firstSite.site_name);
+		authLogger.logAuthSuccess("oauth_user", tokens.expires_at);
 
 		// Clear temporary auth data
 		delete global.authVerifier;
@@ -108,6 +122,7 @@ app.post("/api/auth/callback", async (req, res) => {
 			},
 		});
 	} catch (error) {
+		authLogger.logCodeExchangeFailure(error);
 		res.status(401).json({ error: error.message });
 	}
 });
@@ -136,6 +151,8 @@ app.get("/api/auth/status", async (req, res) => {
 // Refresh token
 app.post("/api/auth/refresh", async (req, res) => {
 	try {
+		authLogger.logTokenRefreshAttempt();
+
 		if (tokenRefreshManager) {
 			await tokenRefreshManager.forceRefresh();
 			res.json({
@@ -146,6 +163,7 @@ app.post("/api/auth/refresh", async (req, res) => {
 			const authData = await db.getAuthToken();
 
 			if (!authData || !authData.refresh_token) {
+				authLogger.error("MANUAL_REFRESH_ERROR", { error: "No refresh token available" });
 				return res.status(401).json({ error: "No refresh token available" });
 			}
 
@@ -154,12 +172,15 @@ app.post("/api/auth/refresh", async (req, res) => {
 
 			await db.saveAuthToken(newTokens.access_token, newTokens.refresh_token, newTokens.expires_at);
 
+			authLogger.logTokenRefreshSuccess(newTokens.expires_at);
+
 			res.json({
 				success: true,
 				expires_at: newTokens.expires_at,
 			});
 		}
 	} catch (error) {
+		authLogger.logTokenRefreshFailure(error);
 		res.status(500).json({ error: error.message });
 	}
 });
@@ -188,6 +209,47 @@ app.get("/api/auth/token-status", async (req, res) => {
 				is_valid: timeUntilExpiry > 0,
 				has_refresh_token: !!authData.refresh_token,
 			});
+		}
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// ============= AUTH LOG ROUTES =============
+
+// Get auth logs
+app.get("/api/auth/logs", async (req, res) => {
+	try {
+		const lines = parseInt(req.query.lines) || 100;
+		const logs = authLogger.readLogs(lines);
+
+		res.json({
+			logs,
+			count: logs.length,
+		});
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// Get log stats
+app.get("/api/auth/logs/stats", async (req, res) => {
+	try {
+		const stats = authLogger.getLogStats();
+		res.json(stats);
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// Clear auth logs
+app.delete("/api/auth/logs", async (req, res) => {
+	try {
+		const success = authLogger.clearLogs();
+		if (success) {
+			res.json({ success: true, message: "Logs cleared successfully" });
+		} else {
+			res.status(500).json({ error: "Failed to clear logs" });
 		}
 	} catch (error) {
 		res.status(500).json({ error: error.message });
