@@ -1,217 +1,219 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
 
 class DatabaseService {
-  constructor() {
-    this.dbPath = path.join(__dirname, 'powerwall.db');
-    this.db = null;
-  }
+	constructor() {
+		this.dbPath = path.join(__dirname, "powerwall.db");
+		this.db = null;
+	}
 
-  connect() {
-    return new Promise((resolve, reject) => {
-      this.db = new sqlite3.Database(this.dbPath, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-  }
+	connect() {
+		return new Promise((resolve, reject) => {
+			this.db = new sqlite3.Database(this.dbPath, (err) => {
+				if (err) reject(err);
+				else resolve();
+			});
+		});
+	}
 
-  close() {
-    return new Promise((resolve, reject) => {
-      if (this.db) {
-        this.db.close((err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      } else {
-        resolve();
-      }
-    });
-  }
+	close() {
+		return new Promise((resolve, reject) => {
+			if (this.db) {
+				this.db.close((err) => {
+					if (err) reject(err);
+					else resolve();
+				});
+			} else {
+				resolve();
+			}
+		});
+	}
 
-  // Auth Token Methods
-  async saveAuthToken(accessToken, refreshToken, expiresAt) {
-    return new Promise((resolve, reject) => {
-      // Delete existing tokens first
-      this.db.run('DELETE FROM auth_tokens', (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+	// Auth Token Methods
+	async saveAuthToken(accessToken, refreshToken, expiresAt) {
+		return new Promise((resolve, reject) => {
+			// Check whether a row already exists
+			this.db.get(
+				"SELECT id, refresh_token FROM auth_tokens ORDER BY id DESC LIMIT 1",
+				(err, existing) => {
+					if (err) {
+						reject(err);
+						return;
+					}
 
-        // Insert new token
-        this.db.run(
-          `INSERT INTO auth_tokens (access_token, refresh_token, expires_at, updated_at) 
-           VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
-          [accessToken, refreshToken, expiresAt],
-          function(err) {
-            if (err) reject(err);
-            else resolve({ id: this.lastID });
-          }
-        );
-      });
-    });
-  }
+					if (existing) {
+						// Preserve the current refresh_token if the caller did not supply a new one
+						const effectiveRefreshToken = refreshToken || existing.refresh_token;
 
-  async getAuthToken() {
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        'SELECT * FROM auth_tokens ORDER BY id DESC LIMIT 1',
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        }
-      );
-    });
-  }
+						this.db.run(
+							`UPDATE auth_tokens
+             SET access_token = ?, refresh_token = ?, expires_at = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+							[accessToken, effectiveRefreshToken, expiresAt, existing.id],
+							function (err) {
+								if (err) reject(err);
+								else resolve({ id: existing.id });
+							},
+						);
+					} else {
+						// First-time insert (initial OAuth callback)
+						this.db.run(
+							`INSERT INTO auth_tokens (access_token, refresh_token, expires_at, updated_at) 
+             VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+							[accessToken, refreshToken, expiresAt],
+							function (err) {
+								if (err) reject(err);
+								else resolve({ id: this.lastID });
+							},
+						);
+					}
+				},
+			);
+		});
+	}
 
-  // Powerwall Config Methods
-  async savePowerwallConfig(siteId, siteName) {
-    return new Promise((resolve, reject) => {
-      this.db.run('DELETE FROM powerwall_config', (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+	async getAuthToken() {
+		return new Promise((resolve, reject) => {
+			this.db.get("SELECT * FROM auth_tokens ORDER BY id DESC LIMIT 1", (err, row) => {
+				if (err) reject(err);
+				else resolve(row);
+			});
+		});
+	}
 
-        this.db.run(
-          `INSERT INTO powerwall_config (site_id, site_name, updated_at) 
+	// Powerwall Config Methods
+	async savePowerwallConfig(siteId, siteName) {
+		return new Promise((resolve, reject) => {
+			this.db.run("DELETE FROM powerwall_config", (err) => {
+				if (err) {
+					reject(err);
+					return;
+				}
+
+				this.db.run(
+					`INSERT INTO powerwall_config (site_id, site_name, updated_at) 
            VALUES (?, ?, CURRENT_TIMESTAMP)`,
-          [siteId, siteName],
-          function(err) {
-            if (err) reject(err);
-            else resolve({ id: this.lastID });
-          }
-        );
-      });
-    });
-  }
+					[siteId, siteName],
+					function (err) {
+						if (err) reject(err);
+						else resolve({ id: this.lastID });
+					},
+				);
+			});
+		});
+	}
 
-  async getPowerwallConfig() {
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        'SELECT * FROM powerwall_config ORDER BY id DESC LIMIT 1',
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        }
-      );
-    });
-  }
+	async getPowerwallConfig() {
+		return new Promise((resolve, reject) => {
+			this.db.get("SELECT * FROM powerwall_config ORDER BY id DESC LIMIT 1", (err, row) => {
+				if (err) reject(err);
+				else resolve(row);
+			});
+		});
+	}
 
-  // Scheduled Task Methods
-  async createTask(name, time, mode, backupReserve) {
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, updated_at) 
+	// Scheduled Task Methods
+	async createTask(name, time, mode, backupReserve) {
+		return new Promise((resolve, reject) => {
+			this.db.run(
+				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, updated_at) 
          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        [name, time, mode, backupReserve],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ id: this.lastID });
-        }
-      );
-    });
-  }
+				[name, time, mode, backupReserve],
+				function (err) {
+					if (err) reject(err);
+					else resolve({ id: this.lastID });
+				},
+			);
+		});
+	}
 
-  async getAllTasks() {
-    return new Promise((resolve, reject) => {
-      this.db.all(
-        'SELECT * FROM scheduled_tasks ORDER BY time ASC',
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        }
-      );
-    });
-  }
+	async getAllTasks() {
+		return new Promise((resolve, reject) => {
+			this.db.all("SELECT * FROM scheduled_tasks ORDER BY time ASC", (err, rows) => {
+				if (err) reject(err);
+				else resolve(rows);
+			});
+		});
+	}
 
-  async getTaskById(id) {
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        'SELECT * FROM scheduled_tasks WHERE id = ?',
-        [id],
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        }
-      );
-    });
-  }
+	async getTaskById(id) {
+		return new Promise((resolve, reject) => {
+			this.db.get("SELECT * FROM scheduled_tasks WHERE id = ?", [id], (err, row) => {
+				if (err) reject(err);
+				else resolve(row);
+			});
+		});
+	}
 
-  async updateTask(id, name, time, mode, backupReserve, enabled) {
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `UPDATE scheduled_tasks 
+	async updateTask(id, name, time, mode, backupReserve, enabled) {
+		return new Promise((resolve, reject) => {
+			this.db.run(
+				`UPDATE scheduled_tasks 
          SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [name, time, mode, backupReserve, enabled, id],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ changes: this.changes });
-        }
-      );
-    });
-  }
+				[name, time, mode, backupReserve, enabled, id],
+				function (err) {
+					if (err) reject(err);
+					else resolve({ changes: this.changes });
+				},
+			);
+		});
+	}
 
-  async deleteTask(id) {
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        'DELETE FROM scheduled_tasks WHERE id = ?',
-        [id],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ changes: this.changes });
-        }
-      );
-    });
-  }
+	async deleteTask(id) {
+		return new Promise((resolve, reject) => {
+			this.db.run("DELETE FROM scheduled_tasks WHERE id = ?", [id], function (err) {
+				if (err) reject(err);
+				else resolve({ changes: this.changes });
+			});
+		});
+	}
 
-  async toggleTaskEnabled(id) {
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `UPDATE scheduled_tasks 
+	async toggleTaskEnabled(id) {
+		return new Promise((resolve, reject) => {
+			this.db.run(
+				`UPDATE scheduled_tasks 
          SET enabled = CASE WHEN enabled = 1 THEN 0 ELSE 1 END, 
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [id],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ changes: this.changes });
-        }
-      );
-    });
-  }
+				[id],
+				function (err) {
+					if (err) reject(err);
+					else resolve({ changes: this.changes });
+				},
+			);
+		});
+	}
 
-  // Task Log Methods
-  async logTaskExecution(taskId, status, errorMessage = null) {
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `INSERT INTO task_logs (task_id, status, error_message) 
+	// Task Log Methods
+	async logTaskExecution(taskId, status, errorMessage = null) {
+		return new Promise((resolve, reject) => {
+			this.db.run(
+				`INSERT INTO task_logs (task_id, status, error_message) 
          VALUES (?, ?, ?)`,
-        [taskId, status, errorMessage],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ id: this.lastID });
-        }
-      );
-    });
-  }
+				[taskId, status, errorMessage],
+				function (err) {
+					if (err) reject(err);
+					else resolve({ id: this.lastID });
+				},
+			);
+		});
+	}
 
-  async getTaskLogs(taskId, limit = 50) {
-    return new Promise((resolve, reject) => {
-      const query = taskId
-        ? 'SELECT * FROM task_logs WHERE task_id = ? ORDER BY executed_at DESC LIMIT ?'
-        : 'SELECT * FROM task_logs ORDER BY executed_at DESC LIMIT ?';
-      
-      const params = taskId ? [taskId, limit] : [limit];
+	async getTaskLogs(taskId, limit = 50) {
+		return new Promise((resolve, reject) => {
+			const query = taskId
+				? "SELECT * FROM task_logs WHERE task_id = ? ORDER BY executed_at DESC LIMIT ?"
+				: "SELECT * FROM task_logs ORDER BY executed_at DESC LIMIT ?";
 
-      this.db.all(query, params, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
-  }
+			const params = taskId ? [taskId, limit] : [limit];
+
+			this.db.all(query, params, (err, rows) => {
+				if (err) reject(err);
+				else resolve(rows);
+			});
+		});
+	}
 }
 
 module.exports = DatabaseService;
