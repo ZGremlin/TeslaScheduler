@@ -47,6 +47,7 @@ function PowerwallStatus() {
 	const operationMode = status.operation?.default_real_mode || "unknown";
 	const backupReserve = status.operation?.backup_reserve_percent || 0;
 	const siteName = status.site_name || "Powerwall";
+	const stormWatchEnabled = status.live_status?.storm_mode_active || "UNKNOWN";
 
 	const getModeDisplay = (mode) => {
 		const modes = {
@@ -107,6 +108,16 @@ function PowerwallStatus() {
 						<div className="card-content">
 							<h3>Backup Reserve</h3>
 							<div className="card-value">{backupReserve}%</div>
+						</div>
+					</div>
+
+					<div className="status-card">
+						<div className="card-icon">🛡️</div>
+						<div className="card-content">
+							<h3>Storm Watch</h3>
+							<div className="card-value">
+								{status.live_status.storm_mode_active ? "Enabled" : "Disabled"}
+							</div>
 						</div>
 					</div>
 				</div>

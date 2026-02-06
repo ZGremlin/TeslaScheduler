@@ -385,6 +385,17 @@ pre {
   animation: pulse 2s ease-in-out infinite;
 }
 
+.status-auto-storm {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 @keyframes pulse {
 
   0%,

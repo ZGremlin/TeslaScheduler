@@ -26,6 +26,7 @@ db.serialize(() => {
       mode TEXT NOT NULL CHECK(mode IN ('self_powered', 'time_based_control')),
       backup_reserve INTEGER NOT NULL CHECK(backup_reserve >= 0 AND backup_reserve <= 100),
       storm_watch TEXT CHECK(storm_watch IN ('enable', 'disable', 'no_change')),
+      auto_storm_watch INTEGER DEFAULT 0,
       enabled INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

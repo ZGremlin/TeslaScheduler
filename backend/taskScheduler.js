@@ -1,6 +1,7 @@
 const cron = require("node-cron");
 const DatabaseService = require("./database");
 const TeslaAPI = require("./teslaAPI");
+const WeatherAlertService = require("./weatherAlertService");
 
 class TaskScheduler {
 	constructor() {
@@ -8,6 +9,7 @@ class TaskScheduler {
 		this.retryTimers = new Map();
 		this.db = new DatabaseService();
 		this.teslaAPI = null;
+		this.weatherAlertService = new WeatherAlertService();
 
 		// Retry failed tasks every 10 minutes
 		this.RETRY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
@@ -134,6 +136,40 @@ class TaskScheduler {
 				throw new Error("Powerwall site not configured");
 			}
 
+			// Handle auto storm watch if enabled
+			if (task.auto_storm_watch && task.storm_watch === "enable") {
+				console.log(`  🌩️  Auto Storm Watch enabled - checking for severe weather...`);
+
+				try {
+					const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+					if (!googleMapsApiKey) {
+						console.warn("  ⚠️  Google Maps API key not configured, skipping auto storm watch");
+					} else {
+						const weatherResult =
+							await this.weatherAlertService.checkForSevereWeatherAndGetAddress(googleMapsApiKey);
+
+						if (weatherResult.success) {
+							console.log(`  🚨 Severe weather detected: ${weatherResult.alert.event}`);
+							console.log(`  📍 Updating site address to trigger Storm Watch...`);
+
+							await this.teslaAPI.updateSiteAddress(
+								authData.access_token,
+								config.site_id,
+								weatherResult.address,
+							);
+
+							console.log(`  ✅ Site address updated - Tesla should activate Storm Watch`);
+						} else {
+							console.log(`  ℹ️  No severe weather alerts active, skipping address update`);
+						}
+					}
+				} catch (weatherError) {
+					console.error(`  ❌ Auto storm watch failed: ${weatherError.message}`);
+					// Continue with task execution even if weather check fails
+				}
+			}
+
 			// Execute the operation mode change
 			await this.teslaAPI.setOperationMode(
 				authData.access_token,
@@ -142,7 +178,7 @@ class TaskScheduler {
 				task.backup_reserve,
 			);
 
-			// Execute storm watch change if specified
+			// Execute manual storm watch change if specified (and not auto)
 			if (task.storm_watch === "enable") {
 				console.log(`  ⛈️  Enabling Storm Watch for task ${task.id}`);
 				await this.teslaAPI.enableStormWatch(authData.access_token, config.site_id);

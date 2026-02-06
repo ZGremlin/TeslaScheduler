@@ -6,6 +6,7 @@ function TaskModal({ task, onSave, onClose }) {
 	const [mode, setMode] = useState("self_powered");
 	const [backupReserve, setBackupReserve] = useState(20);
 	const [stormWatch, setStormWatch] = useState("no_change");
+	const [autoStormWatch, setAutoStormWatch] = useState(false);
 	const [enabled, setEnabled] = useState(true);
 
 	useEffect(() => {
@@ -15,6 +16,7 @@ function TaskModal({ task, onSave, onClose }) {
 			setMode(task.mode);
 			setBackupReserve(task.backup_reserve);
 			setStormWatch(task.storm_watch || "no_change");
+			setAutoStormWatch(!!task.auto_storm_watch);
 			setEnabled(!!task.enabled);
 		}
 	}, [task]);
@@ -33,6 +35,7 @@ function TaskModal({ task, onSave, onClose }) {
 			mode,
 			backup_reserve: parseInt(backupReserve),
 			storm_watch: stormWatch,
+			auto_storm_watch: autoStormWatch,
 			enabled: enabled ? 1 : 0,
 		});
 	};
@@ -109,7 +112,13 @@ function TaskModal({ task, onSave, onClose }) {
 							<select
 								id="storm_watch"
 								value={stormWatch}
-								onChange={(e) => setStormWatch(e.target.value)}
+								onChange={(e) => {
+									setStormWatch(e.target.value);
+									// Disable auto storm watch if storm watch is not enabled
+									if (e.target.value !== "enable") {
+										setAutoStormWatch(false);
+									}
+								}}
 							>
 								<option value="no_change">No Change</option>
 								<option value="enable">Enable Storm Watch</option>
@@ -117,6 +126,24 @@ function TaskModal({ task, onSave, onClose }) {
 							</select>
 							<small>Enable Storm Watch to maximize battery charge before severe weather</small>
 						</div>
+
+						{stormWatch === "enable" && (
+							<div className="form-group">
+								<label className="checkbox-label">
+									<input
+										type="checkbox"
+										checked={autoStormWatch}
+										onChange={(e) => setAutoStormWatch(e.target.checked)}
+									/>
+									<span>🌩️ Auto Storm Watch (Activate only if severe weather detected)</span>
+								</label>
+								<small>
+									When enabled, this task will check weather.gov for active severe weather alerts
+									(hurricanes, blizzards, tornadoes, etc.) and only activate Storm Watch if a real
+									threat is detected. Requires Google Maps API key configured on server.
+								</small>
+							</div>
+						)}
 
 						{task && (
 							<div className="form-group">
@@ -146,6 +173,10 @@ function TaskModal({ task, onSave, onClose }) {
 									<strong>Storm Watch:</strong> When enabled, Powerwall charges to 100% to prepare
 									for grid outages during severe weather. Automatically disables after the weather
 									passes.
+								</li>
+								<li>
+									<strong>Auto Storm Watch:</strong> Intelligently activates Storm Watch only when
+									severe weather alerts are detected in your area, preventing false activations.
 								</li>
 							</ul>
 						</div>

@@ -210,7 +210,17 @@ class TeslaAPI {
 				backup_reserve_percent: backupReserve,
 			};
 
+			console.log("submitting operation change", payload);
+
 			await this.client.post(`${this.baseUrl}/api/1/energy_sites/${siteId}/operation`, payload, {
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+			});
+
+			console.log("submitting backup % change", payload);
+			await this.client.post(`${this.baseUrl}/api/1/energy_sites/${siteId}/backup`, payload, {
 				headers: {
 					Authorization: `Bearer ${token}`,
 					"Content-Type": "application/json",
@@ -259,7 +269,8 @@ class TeslaAPI {
 	 */
 	async enableStormWatch(token, siteId) {
 		try {
-			await this.client.post(
+			console.log("setting storm mode to active");
+			const req = await this.client.post(
 				`${this.baseUrl}/api/1/energy_sites/${siteId}/storm_mode`,
 				{ enabled: true },
 				{
@@ -269,6 +280,7 @@ class TeslaAPI {
 					},
 				},
 			);
+			console.log("storm mode response", req.data);
 			return { success: true, storm_watch: "enabled" };
 		} catch (error) {
 			throw new Error(`Failed to enable storm watch: ${error.message}`);
@@ -307,6 +319,45 @@ class TeslaAPI {
 			};
 		} catch (error) {
 			throw new Error(`Failed to get storm watch status: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Update site address (triggers Storm Watch if in affected area)
+	 * @param {string} token - Auth token
+	 * @param {number} siteId - Energy site ID
+	 * @param {object} address - Address object with all required fields
+	 */
+	async updateSiteAddress(token, siteId, address) {
+		try {
+			const payload = {
+				address: {
+					county: address.county,
+					city: address.city,
+					longitude: address.longitude,
+					country: address.country || "US",
+					address_line1: address.address_line1,
+					address_line2: address.address_line2 || "",
+					zip: address.zip,
+					latitude: address.latitude,
+					state: address.state,
+				},
+			};
+
+			await this.client.post(`${this.baseUrl}/api/1/energy_sites/${siteId}/site_address`, payload, {
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+			});
+
+			return {
+				success: true,
+				message: "Site address updated successfully",
+				address: payload.address,
+			};
+		} catch (error) {
+			throw new Error(`Failed to update site address: ${error.message}`);
 		}
 	}
 }

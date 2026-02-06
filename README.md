@@ -352,6 +352,58 @@ Task 2: "Post-Storm Recovery"
   Storm Watch: Disable
 ```
 
+### Auto Storm Watch (Intelligent Weather Monitoring)
+
+Auto Storm Watch automatically monitors weather.gov for severe weather alerts and only activates Storm Watch when real threats are detected. This prevents false activations while ensuring protection during actual emergencies.
+
+**Supported Severe Weather Types:**
+
+- Hurricane Warning/Watch
+- Tornado Warning
+- Blizzard Warning
+- Winter Storm Warning
+- Flood/Flash Flood Warning
+- High Wind Warning
+- And 10+ other severe alert types
+
+**How It Works:**
+
+1. Task checks weather.gov API for active severe weather alerts
+2. If severe weather detected, finds an address in the affected area
+3. Updates Tesla site address to trigger automatic Storm Watch
+4. Tesla recognizes address is in severe weather zone and activates Storm Watch
+
+**Setup:**
+
+1. Obtain a Google Maps API key (required for geocoding)
+2. Add to backend environment:
+   ```bash
+   cd backend
+   echo "GOOGLE_MAPS_API_KEY=your_key_here" >> .env
+   ```
+3. Create task with Storm Watch set to "Enable"
+4. Check "🌩️ Auto Storm Watch" checkbox
+
+**Example Auto Storm Watch Task:**
+
+```
+Task: "Daily Storm Watch Check"
+  Time: 6:00 AM (daily)
+  Storm Watch: Enable
+  Auto Storm Watch: ✓ Enabled
+```
+
+This runs daily and **only activates Storm Watch if severe weather exists**. On clear days, nothing happens.
+
+**Benefits:**
+
+- ✅ No false activations on clear days
+- ✅ Automatic 24/7 monitoring
+- ✅ No manual intervention needed
+- ✅ Responds to real NWS alerts only
+
+**See AUTO_STORM_WATCH.md for complete documentation.**
+
 ### Managing Tasks
 
 - **Enable/Disable**: Click the play/pause button to toggle task execution

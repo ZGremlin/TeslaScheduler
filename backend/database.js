@@ -113,12 +113,12 @@ class DatabaseService {
 	}
 
 	// Scheduled Task Methods
-	async createTask(name, time, mode, backupReserve, stormWatch = "no_change") {
+	async createTask(name, time, mode, backupReserve, stormWatch = "no_change", autoStormWatch = 0) {
 		return new Promise((resolve, reject) => {
 			this.db.run(
-				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, storm_watch, updated_at) 
-         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-				[name, time, mode, backupReserve, stormWatch],
+				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, storm_watch, auto_storm_watch, updated_at) 
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+				[name, time, mode, backupReserve, stormWatch, autoStormWatch],
 				function (err) {
 					if (err) reject(err);
 					else resolve({ id: this.lastID });
@@ -145,13 +145,22 @@ class DatabaseService {
 		});
 	}
 
-	async updateTask(id, name, time, mode, backupReserve, enabled, stormWatch = "no_change") {
+	async updateTask(
+		id,
+		name,
+		time,
+		mode,
+		backupReserve,
+		enabled,
+		stormWatch = "no_change",
+		autoStormWatch = 0,
+	) {
 		return new Promise((resolve, reject) => {
 			this.db.run(
 				`UPDATE scheduled_tasks 
-         SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, storm_watch = ?, updated_at = CURRENT_TIMESTAMP
+         SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, storm_watch = ?, auto_storm_watch = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-				[name, time, mode, backupReserve, enabled, stormWatch, id],
+				[name, time, mode, backupReserve, enabled, stormWatch, autoStormWatch, id],
 				function (err) {
 					if (err) reject(err);
 					else resolve({ changes: this.changes });

@@ -293,7 +293,7 @@ app.get("/api/tasks/:id", async (req, res) => {
 // Create new task
 app.post("/api/tasks", async (req, res) => {
 	try {
-		const { name, time, mode, backup_reserve, storm_watch } = req.body;
+		const { name, time, mode, backup_reserve, storm_watch, auto_storm_watch } = req.body;
 
 		// Validation
 		if (!name || !time || !mode || backup_reserve === undefined) {
@@ -315,12 +315,29 @@ app.post("/api/tasks", async (req, res) => {
 			return res.status(400).json({ error: "Invalid storm_watch value" });
 		}
 
+		// Validate auto_storm_watch
+		const autoStormWatchValue = auto_storm_watch ? 1 : 0;
+
+		// Auto storm watch can only be enabled if storm_watch is set to 'enable'
+		if (autoStormWatchValue && stormWatchValue !== "enable") {
+			return res.status(400).json({
+				error: "Auto Storm Watch can only be enabled when Storm Watch is set to Enable",
+			});
+		}
+
 		// Validate time format (HH:MM)
 		if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
 		}
 
-		const result = await db.createTask(name, time, mode, backup_reserve, stormWatchValue);
+		const result = await db.createTask(
+			name,
+			time,
+			mode,
+			backup_reserve,
+			stormWatchValue,
+			autoStormWatchValue,
+		);
 		const newTask = await db.getTaskById(result.id);
 
 		// Schedule the new task
@@ -335,7 +352,7 @@ app.post("/api/tasks", async (req, res) => {
 // Update task
 app.put("/api/tasks/:id", async (req, res) => {
 	try {
-		const { name, time, mode, backup_reserve, enabled, storm_watch } = req.body;
+		const { name, time, mode, backup_reserve, enabled, storm_watch, auto_storm_watch } = req.body;
 		const taskId = parseInt(req.params.id);
 
 		// Validation
@@ -358,11 +375,30 @@ app.put("/api/tasks/:id", async (req, res) => {
 			return res.status(400).json({ error: "Invalid storm_watch value" });
 		}
 
+		// Validate auto_storm_watch
+		const autoStormWatchValue = auto_storm_watch ? 1 : 0;
+
+		// Auto storm watch can only be enabled if storm_watch is set to 'enable'
+		if (autoStormWatchValue && stormWatchValue !== "enable") {
+			return res.status(400).json({
+				error: "Auto Storm Watch can only be enabled when Storm Watch is set to Enable",
+			});
+		}
+
 		if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
 		}
 
-		await db.updateTask(taskId, name, time, mode, backup_reserve, enabled ? 1 : 0, stormWatchValue);
+		await db.updateTask(
+			taskId,
+			name,
+			time,
+			mode,
+			backup_reserve,
+			enabled ? 1 : 0,
+			stormWatchValue,
+			autoStormWatchValue,
+		);
 		const updatedTask = await db.getTaskById(taskId);
 
 		// Reschedule
