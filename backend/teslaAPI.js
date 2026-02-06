@@ -122,7 +122,9 @@ class TeslaAPI {
 			);
 			return response.data.response;
 		} catch (error) {
-			throw new Error(`Failed to get site status: ${error.message}`);
+			const errorMsg = error.response?.data?.error || error.message;
+			const statusCode = error.response?.status;
+			throw new Error(`Failed to get site status (${statusCode}): ${errorMsg}`);
 		}
 	}
 
@@ -139,7 +141,9 @@ class TeslaAPI {
 			);
 			return response.data.response;
 		} catch (error) {
-			throw new Error(`Failed to get site info: ${error.message}`);
+			const errorMsg = error.response?.data?.error || error.message;
+			const statusCode = error.response?.status;
+			throw new Error(`Failed to get site info (${statusCode}): ${errorMsg}`);
 		}
 	}
 
@@ -156,8 +160,10 @@ class TeslaAPI {
 			);
 			return response.data.response;
 		} catch (error) {
+			const errorMsg = error.response?.data?.error || error.message;
+			const statusCode = error.response?.status;
 			// Live status might not be available for all sites
-			console.warn(`Live status not available: ${error.message}`);
+			console.warn(`Live status not available (${statusCode}): ${errorMsg}`);
 			return null;
 		}
 	}
@@ -200,22 +206,16 @@ class TeslaAPI {
 			const defaultRealMode = mode === "self_powered" ? "self_consumption" : "autonomous";
 
 			const payload = {
-				// default_real_mode: defaultRealMode,
+				default_real_mode: defaultRealMode,
 				backup_reserve_percent: backupReserve,
 			};
 
-			const req = await this.client.post(
-				`${this.baseUrl}/api/1/energy_sites/${siteId}/backup`,
-				payload,
-				{
-					headers: {
-						Authorization: `Bearer ${token}`,
-						"Content-Type": "application/json",
-					},
+			await this.client.post(`${this.baseUrl}/api/1/energy_sites/${siteId}/operation`, payload, {
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
 				},
-			);
-
-			console.log(req.data);
+			});
 
 			return { success: true, mode, backupReserve };
 		} catch (error) {
@@ -251,6 +251,62 @@ class TeslaAPI {
 			};
 		} catch (error) {
 			throw new Error(`Failed to get battery status: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Enable Storm Watch mode
+	 */
+	async enableStormWatch(token, siteId) {
+		try {
+			await this.client.post(
+				`${this.baseUrl}/api/1/energy_sites/${siteId}/storm_mode`,
+				{ enabled: true },
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
+					},
+				},
+			);
+			return { success: true, storm_watch: "enabled" };
+		} catch (error) {
+			throw new Error(`Failed to enable storm watch: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Disable Storm Watch mode
+	 */
+	async disableStormWatch(token, siteId) {
+		try {
+			await this.client.post(
+				`${this.baseUrl}/api/1/energy_sites/${siteId}/storm_mode`,
+				{ enabled: false },
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
+					},
+				},
+			);
+			return { success: true, storm_watch: "disabled" };
+		} catch (error) {
+			throw new Error(`Failed to disable storm watch: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Get current storm watch status
+	 */
+	async getStormWatchStatus(token, siteId) {
+		try {
+			const siteInfo = await this.getSiteInfo(token, siteId);
+			return {
+				enabled: siteInfo.user_settings?.storm_mode_enabled || false,
+			};
+		} catch (error) {
+			throw new Error(`Failed to get storm watch status: ${error.message}`);
 		}
 	}
 }

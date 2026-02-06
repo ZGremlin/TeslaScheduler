@@ -23,6 +23,18 @@ function TaskList({ tasks, onEdit, onDelete, onToggle, onExecute }) {
 		return mode === "self_powered" ? "Self-Powered" : "Time-Based Control";
 	};
 
+	const getStormWatchDisplay = (stormWatch) => {
+		if (stormWatch === "enable") return "⛈️ Enable";
+		if (stormWatch === "disable") return "☀️ Disable";
+		return "➖ No Change";
+	};
+
+	const getStormWatchIcon = (stormWatch) => {
+		if (stormWatch === "enable") return "⛈️";
+		if (stormWatch === "disable") return "☀️";
+		return "➖";
+	};
+
 	return (
 		<div className="task-list">
 			{tasks.map((task) => (
@@ -89,6 +101,16 @@ function TaskList({ tasks, onEdit, onDelete, onToggle, onExecute }) {
 								<div className="detail-value">{task.backup_reserve}%</div>
 							</div>
 						</div>
+
+						{task.storm_watch && task.storm_watch !== "no_change" && (
+							<div className="task-detail-item">
+								<span className="detail-icon">{getStormWatchIcon(task.storm_watch)}</span>
+								<div>
+									<div className="detail-label">Storm Watch</div>
+									<div className="detail-value">{getStormWatchDisplay(task.storm_watch)}</div>
+								</div>
+							</div>
+						)}
 					</div>
 
 					<div className="task-footer">

@@ -134,13 +134,22 @@ class TaskScheduler {
 				throw new Error("Powerwall site not configured");
 			}
 
-			// Execute the task
+			// Execute the operation mode change
 			await this.teslaAPI.setOperationMode(
 				authData.access_token,
 				config.site_id,
 				task.mode,
 				task.backup_reserve,
 			);
+
+			// Execute storm watch change if specified
+			if (task.storm_watch === "enable") {
+				console.log(`  ⛈️  Enabling Storm Watch for task ${task.id}`);
+				await this.teslaAPI.enableStormWatch(authData.access_token, config.site_id);
+			} else if (task.storm_watch === "disable") {
+				console.log(`  ☀️  Disabling Storm Watch for task ${task.id}`);
+				await this.teslaAPI.disableStormWatch(authData.access_token, config.site_id);
+			}
 
 			// Log success
 			await this.db.logTaskExecution(task.id, "success");

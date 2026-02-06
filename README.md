@@ -98,6 +98,65 @@ npm start
 
 The React app will start on `http://localhost:3000` and open in your browser.
 
+### 7. Remote Access Configuration (Optional)
+
+To access the application from other devices on your network (e.g., phone, tablet):
+
+**Option 1: Automatic Detection (Recommended)**
+
+1. Find your server's IP address:
+
+   ```bash
+   # On Linux/Mac
+   ifconfig | grep "inet "
+
+   # On Windows
+   ipconfig
+   ```
+
+2. Access from any device on your network:
+
+   ```
+   http://YOUR_SERVER_IP:3000
+   ```
+
+   Example: `http://192.168.1.100:3000`
+
+3. The frontend automatically detects the backend using the same IP address
+   - No configuration needed!
+
+**Option 2: Manual Backend Configuration**
+
+If your backend is on a different host, create `frontend/.env.local`:
+
+```bash
+# Frontend in frontend/.env.local
+REACT_APP_API_URL=http://YOUR_BACKEND_IP:3001/api
+```
+
+Examples:
+
+```bash
+# Backend on specific IP
+REACT_APP_API_URL=http://192.168.1.100:3001/api
+
+# Backend on hostname
+REACT_APP_API_URL=http://powerwall-server.local:3001/api
+
+# Backend on custom port
+REACT_APP_API_URL=http://192.168.1.100:8080/api
+```
+
+After creating `.env.local`, restart the frontend:
+
+```bash
+cd frontend
+npm start
+```
+
+**Network Firewall:**
+Make sure ports 3000 (frontend) and 3001 (backend) are open on your firewall if accessing remotely.
+
 ## Configuration
 
 ### First-Time Setup
@@ -260,7 +319,38 @@ Fail   Retry  Retry  Retry  Success
      - **Self-Powered**: Maximizes solar self-consumption
      - **Time-Based Control**: Optimizes for time-of-use rates
    - **Backup Reserve**: Minimum battery percentage to reserve (0-100%)
+   - **Storm Watch Mode**:
+     - **No Change**: Don't modify Storm Watch settings
+     - **Enable Storm Watch**: Activate storm preparation mode (charges to 100%)
+     - **Disable Storm Watch**: Deactivate storm mode (return to normal operation)
 3. Click "Create Task"
+
+### Storm Watch Mode
+
+Storm Watch is Tesla's severe weather preparation feature. When enabled, your Powerwall:
+
+- Charges to 100% capacity to maximize backup power
+- Prioritizes charging even during peak rate periods
+- Maintains full charge until the storm passes
+
+**Use Cases:**
+
+- **Enable before severe weather**: Schedule a task to enable Storm Watch when severe weather is forecasted
+- **Disable after weather passes**: Schedule a task to disable Storm Watch and return to normal operation
+- **Hurricane preparation**: Enable Storm Watch 24-48 hours before landfall
+- **Winter storm prep**: Enable before ice storms or severe winter weather
+
+**Example Tasks:**
+
+```
+Task 1: "Pre-Storm Preparation"
+  Time: 6:00 PM (day before storm)
+  Storm Watch: Enable
+
+Task 2: "Post-Storm Recovery"
+  Time: 12:00 PM (day after storm)
+  Storm Watch: Disable
+```
 
 ### Managing Tasks
 

@@ -113,12 +113,12 @@ class DatabaseService {
 	}
 
 	// Scheduled Task Methods
-	async createTask(name, time, mode, backupReserve) {
+	async createTask(name, time, mode, backupReserve, stormWatch = "no_change") {
 		return new Promise((resolve, reject) => {
 			this.db.run(
-				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, updated_at) 
-         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-				[name, time, mode, backupReserve],
+				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, storm_watch, updated_at) 
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+				[name, time, mode, backupReserve, stormWatch],
 				function (err) {
 					if (err) reject(err);
 					else resolve({ id: this.lastID });
@@ -145,13 +145,13 @@ class DatabaseService {
 		});
 	}
 
-	async updateTask(id, name, time, mode, backupReserve, enabled) {
+	async updateTask(id, name, time, mode, backupReserve, enabled, stormWatch = "no_change") {
 		return new Promise((resolve, reject) => {
 			this.db.run(
 				`UPDATE scheduled_tasks 
-         SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+         SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, storm_watch = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-				[name, time, mode, backupReserve, enabled, id],
+				[name, time, mode, backupReserve, enabled, stormWatch, id],
 				function (err) {
 					if (err) reject(err);
 					else resolve({ changes: this.changes });

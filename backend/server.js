@@ -97,9 +97,10 @@ app.post("/api/auth/callback", async (req, res) => {
 
 		// Save first site as default (in production, let user choose)
 		const firstSite = sites[0];
-		await db.savePowerwallConfig(firstSite.energy_site_id.toString(), firstSite.site_name);
+		const siteId = firstSite.energy_site_id.toString();
+		await db.savePowerwallConfig(siteId, firstSite.site_name);
 
-		authLogger.logSiteConfigured(firstSite.energy_site_id, firstSite.site_name);
+		authLogger.logSiteConfigured(siteId, firstSite.site_name);
 		authLogger.logAuthSuccess("oauth_user", tokens.expires_at);
 
 		// Clear temporary auth data
@@ -117,7 +118,7 @@ app.post("/api/auth/callback", async (req, res) => {
 			message: "Authentication successful",
 			expires_at: tokens.expires_at,
 			site: {
-				id: firstSite.energy_site_id,
+				id: siteId,
 				name: firstSite.site_name,
 			},
 		});
@@ -292,7 +293,7 @@ app.get("/api/tasks/:id", async (req, res) => {
 // Create new task
 app.post("/api/tasks", async (req, res) => {
 	try {
-		const { name, time, mode, backup_reserve } = req.body;
+		const { name, time, mode, backup_reserve, storm_watch } = req.body;
 
 		// Validation
 		if (!name || !time || !mode || backup_reserve === undefined) {
@@ -307,12 +308,19 @@ app.post("/api/tasks", async (req, res) => {
 			return res.status(400).json({ error: "Backup reserve must be between 0 and 100" });
 		}
 
+		// Validate storm_watch if provided
+		const validStormWatch = ["enable", "disable", "no_change"];
+		const stormWatchValue = storm_watch || "no_change";
+		if (!validStormWatch.includes(stormWatchValue)) {
+			return res.status(400).json({ error: "Invalid storm_watch value" });
+		}
+
 		// Validate time format (HH:MM)
 		if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
 		}
 
-		const result = await db.createTask(name, time, mode, backup_reserve);
+		const result = await db.createTask(name, time, mode, backup_reserve, stormWatchValue);
 		const newTask = await db.getTaskById(result.id);
 
 		// Schedule the new task
@@ -327,7 +335,7 @@ app.post("/api/tasks", async (req, res) => {
 // Update task
 app.put("/api/tasks/:id", async (req, res) => {
 	try {
-		const { name, time, mode, backup_reserve, enabled } = req.body;
+		const { name, time, mode, backup_reserve, enabled, storm_watch } = req.body;
 		const taskId = parseInt(req.params.id);
 
 		// Validation
@@ -343,11 +351,18 @@ app.put("/api/tasks/:id", async (req, res) => {
 			return res.status(400).json({ error: "Backup reserve must be between 0 and 100" });
 		}
 
+		// Validate storm_watch if provided
+		const validStormWatch = ["enable", "disable", "no_change"];
+		const stormWatchValue = storm_watch || "no_change";
+		if (!validStormWatch.includes(stormWatchValue)) {
+			return res.status(400).json({ error: "Invalid storm_watch value" });
+		}
+
 		if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
 		}
 
-		await db.updateTask(taskId, name, time, mode, backup_reserve, enabled ? 1 : 0);
+		await db.updateTask(taskId, name, time, mode, backup_reserve, enabled ? 1 : 0, stormWatchValue);
 		const updatedTask = await db.getTaskById(taskId);
 
 		// Reschedule
