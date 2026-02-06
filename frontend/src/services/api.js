@@ -1,9 +1,32 @@
 import axios from "axios";
 
-const API_BASE_URL =
-	process.env.REACT_APP_API_URL ||
-	window.location.protocol + "//" + window.location.host.replace(":3000", ":3001") + "/api";
+// Determine API base URL
+const getApiBaseUrl = () => {
+	// 1. Environment variable (highest priority) - set via REACT_APP_API_URL
+	if (process.env.REACT_APP_API_URL) {
+		return process.env.REACT_APP_API_URL;
+	}
 
+	// 2. Check if running in production (built and served from backend)
+	//    In this case, use relative path since frontend is served from same origin
+	if (process.env.NODE_ENV === "production") {
+		return "/api";
+	}
+
+	// 3. Development mode - try to detect backend on current network
+	//    Use current hostname instead of hardcoded localhost
+	const hostname = window.location.hostname;
+
+	// If accessing via IP address (e.g., 192.168.x.x), use that IP for API
+	// If accessing via localhost, use localhost for API
+	const apiUrl = `http://${hostname}:3001/api`;
+
+	return apiUrl;
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+console.log("API Base URL:", API_BASE_URL);
 const api = axios.create({
 	baseURL: API_BASE_URL,
 	headers: {
