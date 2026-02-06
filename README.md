@@ -14,6 +14,13 @@ A full-stack application for automating Tesla Powerwall operation mode changes a
 - 🎨 **Modern UI**: Beautiful, responsive interface with dark mode design
 - 🔧 **Robust Error Handling**: Automatic retry for both authentication and task execution
 
+## Screenshots
+![Tesla Powerwall Scheduler Scheduled Tasks](https://raw.githubusercontent.com/ZGremlin/image-cdn/refs/heads/main/PowerwallScheduler/PowerwallSchedulerSchedule.png)
+![Tesla Powerwall Scheduler Status Display](https://raw.githubusercontent.com/ZGremlin/image-cdn/refs/heads/main/PowerwallScheduler/PowerwallSchedulerStatus.png)
+![Tesla Powerwall Scheduler Execution Logs](https://raw.githubusercontent.com/ZGremlin/image-cdn/refs/heads/main/PowerwallScheduler/PowerwallSchedulerLogs.png)
+![Tesla Powerwall Scheduler Auth Logs](https://raw.githubusercontent.com/ZGremlin/image-cdn/refs/heads/main/PowerwallScheduler/PowerwallSchedulerAuthLogs.png)
+
+
 ## System Architecture
 
 ### Backend (Node.js + Express)
