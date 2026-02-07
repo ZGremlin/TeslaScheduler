@@ -51,7 +51,7 @@ function TaskList({ tasks, onEdit, onDelete, onToggle, onExecute }) {
 								{task.is_retrying && (
 									<span className="task-status status-retrying">🔄 Retrying</span>
 								)}
-								{task.auto_storm_watch && task.storm_watch === "enable" && (
+								{!!task.auto_storm_watch && task.storm_watch === "enable" && (
 									<span className="task-status status-auto-storm">🌩️ Auto</span>
 								)}
 							</div>
