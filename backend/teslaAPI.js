@@ -1,6 +1,8 @@
 const axios = require("axios");
 const crypto = require("crypto");
 
+const ntfy = require("./ntfy");
+
 class TeslaAPI {
 	constructor() {
 		this.baseUrl = "https://owner-api.teslamotors.com";
@@ -64,6 +66,7 @@ class TeslaAPI {
 				expires_at: Date.now() + response.data.expires_in * 1000,
 			};
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Tesla token exchange failed: ${error.message}`);
 			throw new Error(`Token exchange failed: ${error.message}`);
 		}
 	}
@@ -79,12 +82,15 @@ class TeslaAPI {
 				refresh_token: refreshToken,
 			});
 
+			ntfy.sendPushNotification("🔄 Tesla token refreshed successfully");
+
 			return {
 				access_token: response.data.access_token,
 				refresh_token: response.data.refresh_token,
 				expires_at: Date.now() + response.data.expires_in * 1000,
 			};
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Tesla token refresh failed: ${error.message}`);
 			throw new Error(`Token refresh failed: ${error.message}`);
 		}
 	}
@@ -105,6 +111,7 @@ class TeslaAPI {
 
 			return energySites;
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to get energy sites: ${error.message}`);
 			throw new Error(`Failed to get energy sites: ${error.message}`);
 		}
 	}
@@ -124,6 +131,7 @@ class TeslaAPI {
 		} catch (error) {
 			const errorMsg = error.response?.data?.error || error.message;
 			const statusCode = error.response?.status;
+			ntfy.sendPushNotification(`❌ Failed to get site status: ${errorMsg}`);
 			throw new Error(`Failed to get site status (${statusCode}): ${errorMsg}`);
 		}
 	}
@@ -143,6 +151,7 @@ class TeslaAPI {
 		} catch (error) {
 			const errorMsg = error.response?.data?.error || error.message;
 			const statusCode = error.response?.status;
+			ntfy.sendPushNotification(`❌ Failed to get site info: ${errorMsg}`);
 			throw new Error(`Failed to get site info (${statusCode}): ${errorMsg}`);
 		}
 	}
@@ -163,6 +172,7 @@ class TeslaAPI {
 			const errorMsg = error.response?.data?.error || error.message;
 			const statusCode = error.response?.status;
 			// Live status might not be available for all sites
+			ntfy.sendPushNotification(`⚠ Failed to get live status: ${errorMsg}`);
 			console.warn(`Live status not available (${statusCode}): ${errorMsg}`);
 			return null;
 		}
@@ -189,6 +199,7 @@ class TeslaAPI {
 				live_status: liveStatus,
 			};
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to get complete site data: ${error.message}`);
 			throw new Error(`Failed to get complete site data: ${error.message}`);
 		}
 	}
@@ -229,6 +240,7 @@ class TeslaAPI {
 
 			return { success: true, mode, backupReserve };
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to set operation mode: ${error.message}`);
 			throw new Error(`Failed to set operation mode: ${error.message}`);
 		}
 	}
@@ -244,6 +256,7 @@ class TeslaAPI {
 				backup_reserve_percent: siteInfo.backup_reserve_percent,
 			};
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to get operation mode: ${error.message}`);
 			throw new Error(`Failed to get operation mode: ${error.message}`);
 		}
 	}
@@ -260,6 +273,7 @@ class TeslaAPI {
 				energy_left: siteInfo.energy_left || 0,
 			};
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to get battery status: ${error.message}`);
 			throw new Error(`Failed to get battery status: ${error.message}`);
 		}
 	}
@@ -283,6 +297,7 @@ class TeslaAPI {
 			console.log("storm mode response", req.data);
 			return { success: true, storm_watch: "enabled" };
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to enable storm watch: ${error.message}`);
 			throw new Error(`Failed to enable storm watch: ${error.message}`);
 		}
 	}
@@ -304,6 +319,7 @@ class TeslaAPI {
 			);
 			return { success: true, storm_watch: "disabled" };
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to disable storm watch: ${error.message}`);
 			throw new Error(`Failed to disable storm watch: ${error.message}`);
 		}
 	}
@@ -318,6 +334,7 @@ class TeslaAPI {
 				enabled: siteInfo.user_settings?.storm_mode_enabled || false,
 			};
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to get storm watch status: ${error.message}`);
 			throw new Error(`Failed to get storm watch status: ${error.message}`);
 		}
 	}
@@ -357,6 +374,7 @@ class TeslaAPI {
 				address: payload.address,
 			};
 		} catch (error) {
+			ntfy.sendPushNotification(`❌ Failed to update site address: ${error.message}`);
 			throw new Error(`Failed to update site address: ${error.message}`);
 		}
 	}

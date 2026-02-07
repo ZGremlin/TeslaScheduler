@@ -2,6 +2,7 @@ const cron = require("node-cron");
 const DatabaseService = require("./database");
 const TeslaAPI = require("./teslaAPI");
 const WeatherAlertService = require("./weatherAlertService");
+const ntfy = require("./ntfy");
 
 class TaskScheduler {
 	constructor() {
@@ -193,8 +194,12 @@ class TaskScheduler {
 
 			// Clear any retry timer on success
 			this.clearRetryTimer(task.id);
+
+			// Notify of task success
+			ntfy.sendPushNotification(`✅ Task "${task.name}" executed successfully`);
 		} catch (error) {
 			console.error(`❌ Task ${task.id} failed:`, error.message);
+			ntfy.sendPushNotification(`❌ Task "${task.name}" failed: ${error.message}`);
 			await this.db.logTaskExecution(task.id, "failed", error.message);
 
 			// Schedule retry on failure
