@@ -8,12 +8,14 @@ RUN npm install pm2 -g
 WORKDIR /app
 
 #1. Install Backend dependencies
-COPY backend/package*.json ./backend/ RUN cd backend && npm install --omit=dev
+COPY backend/package*.json ./backend/ 
+RUN cd backend && npm install --omit=dev
 
 #2. Install Frontend dependencies
 #Note: We don't use --omit=dev here because 'npm start'
 # often requires dev scripts or build tools.
-COPY frontend/package*.json ./frontend/ RUN cd frontend && npm install
+COPY frontend/package*.json ./frontend/ 
+RUN cd frontend && npm install
 
 #3. Copy the rest of the project source code
 COPY . .
