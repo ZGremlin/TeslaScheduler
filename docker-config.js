@@ -1,14 +1,17 @@
 module.exports = {
 	apps: [
 		{
-			name: "frontend-api",
-			script: "./src/server-a.js",
-			env: { NODE_ENV: "production", PORT: 3000 },
+			name: "backend-api",
+			script: "server.js",
+			cwd: "./backend",
+			env: { NODE_ENV: "production", PORT: 3001 },
 		},
 		{
-			name: "background-worker",
-			script: "./src/server-b.js",
-			env: { NODE_ENV: "production", PORT: 4000 },
+			name: "frontend-app",
+			script: "npm",
+			args: "start",
+			cwd: "./frontend",
+			env: { NODE_ENV: "production", PORT: 3000 },
 		},
 	],
 };

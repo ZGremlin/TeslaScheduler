@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 3000 4000
 
 # Use 'pm2-runtime' instead of 'pm2' to keep the container alive
-CMD ["pm2-runtime", "dockerconfig.js"]
+CMD ["pm2-runtime", "docker-config.js"]
