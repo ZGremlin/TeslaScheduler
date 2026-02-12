@@ -22,10 +22,11 @@ COPY . .
 
 #4. Create the config directory and setup symlinks as requested
 RUN mkdir -p config && \
-cp /app/backend/.env.example /config/backend.env && \
-cp /app/frontend/.env.example /config/frontend.env.local && \
-ln -sf /config/frontend.env.local /app/frontend/.env.local && \
-ln -sf /config/backend.env /app/backend/.env
+
+cp /app/backend/.env.example /app/config/backend.env && \
+cp /app/frontend/.env.example /app/config/frontend.env.local && \
+ln -sf /app/config/frontend.env.local /app/frontend/.env.local && \
+ln -sf /app/config/backend.env /app/backend/.env
 
 #Expose the ports for both servers
 EXPOSE 3000 3001
