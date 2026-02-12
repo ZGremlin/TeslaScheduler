@@ -3,15 +3,21 @@ module.exports = {
 		{
 			name: "backend-api",
 			script: "server.js",
-			cwd: "./backend",
-			env: { NODE_ENV: "production", PORT: 3001 },
+			cwd: "/app/backend", // Absolute path inside container
+			env: {
+				NODE_ENV: "production",
+				PORT: 3001, // Note: Ensure your Docker run maps 3001
+			},
 		},
 		{
 			name: "frontend-app",
 			script: "npm",
 			args: "start",
-			cwd: "./frontend",
-			env: { NODE_ENV: "production", PORT: 3000 },
+			cwd: "/app/frontend", // Absolute path inside container
+			env: {
+				NODE_ENV: "production",
+				PORT: 3000,
+			},
 		},
 	],
 };
