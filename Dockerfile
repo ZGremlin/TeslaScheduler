@@ -19,18 +19,12 @@ COPY frontend/package*.json ./frontend/ RUN cd frontend && npm install
 COPY . .
 
 #4. Create the config directory and setup symlinks as requested
-RUN mkdir -p config &&
-
-ln -sf /app/backend/.env /app/config/backend.env &&
-
-ln -sf /app/backend/.env.example /app/config/backend.env.example &&
-
-ln -sf /app/backend/.env.local /app/config/backend.env.local &&
-
-ln -sf /app/frontend/.env /app/config/frontend.env &&
-
-ln -sf /app/frontend/.env.example /app/config/frontend.env.example &&
-
+RUN mkdir -p config && \
+ln -sf /app/backend/.env /app/config/backend.env && \
+ln -sf /app/backend/.env.example /app/config/backend.env.example && \
+ln -sf /app/backend/.env.local /app/config/backend.env.local && \
+ln -sf /app/frontend/.env /app/config/frontend.env && \
+ln -sf /app/frontend/.env.example /app/config/frontend.env.example && \
 ln -sf /app/frontend/.env.local /app/config/frontend.env.local
 
 #Expose the ports for both servers
