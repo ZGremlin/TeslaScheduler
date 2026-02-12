@@ -23,8 +23,10 @@ COPY . .
 #4. Create the config directory and setup symlinks as requested
 RUN mkdir -p config && cp /app/backend/.env.example /app/config/backend.env && cp /app/frontend/.env.example /app/config/frontend.env.local && ln -sf /app/config/frontend.env.local /app/frontend/.env.local && ln -sf /app/config/backend.env /app/backend/.env
 
-#Expose the ports for both servers
+# 5. Make sure the entrypoint script is executable
+RUN chmod +x entrypoint.sh
+
 EXPOSE 3000 3001
 
-#Start both apps using the ecosystem file
-CMD ["pm2-runtime", "docker-config.js"]
+# Execute the bash script
+CMD ["./entrypoint.sh"]

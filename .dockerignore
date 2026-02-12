@@ -10,6 +10,7 @@ powerwall.db
 backend/powerwall.db
 backend/*.db
 backend/powerwall*.db
+backend/powerwall*.db.*
 backend/node_modules
 frontend/node_modules
 backend/logs
