@@ -6,6 +6,7 @@ logs
 # Database
 *.db
 *.sqlite
+powerwall.db
 
 # Secrets and Config
 .env
