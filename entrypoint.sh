@@ -15,4 +15,4 @@ pm2 list
 echo "Both apps started. Monitoring..."
 # 'pm2-runtime' itself keeps the container alive. 
 # We just need to point it at the active processes.
-# pm2-runtime status
+pm2-runtime
