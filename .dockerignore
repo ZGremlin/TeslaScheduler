@@ -9,6 +9,10 @@ logs
 powerwall.db
 backend/powerwall.db
 backend/*.db
+backend/powerwall*.db
+backend/node_modules
+frontend/node_modules
+backend/logs
 
 # Secrets and Config
 .env
@@ -16,6 +20,8 @@ backend/*.db
 **/.env
 **/.env.local
 config/
+frontend/.env.local
+backend/.env
 
 # Git and IDE
 .git
