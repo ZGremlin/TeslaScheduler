@@ -2,7 +2,7 @@
 
 echo "Starting Backend..."
 cd /app/backend
-pm2-runtime start server.js --name "backend-api"
+pm2 start server.js --name "backend-api"
 
 echo "Starting Frontend..."
 cd /app/frontend
