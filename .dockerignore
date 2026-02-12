@@ -1,6 +1,11 @@
 # Dependency directories
 node_modules
 **/node_modules
+logs
+
+# Database
+*.db
+*.sqlite
 
 # Secrets and Config
 .env
