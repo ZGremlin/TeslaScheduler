@@ -1188,3 +1188,128 @@ pre {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ============= SITE SWITCHER ============= */
+
+.site-switcher {
+  position: relative;
+  display: inline-block;
+}
+
+.site-switcher-single {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.site-switcher-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+}
+
+.site-switcher-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.site-switcher-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.site-icon {
+  font-size: 1.2rem;
+}
+
+.site-name {
+  font-weight: 500;
+}
+
+.dropdown-arrow {
+  font-size: 0.7rem;
+  margin-left: 0.25rem;
+  opacity: 0.7;
+}
+
+.site-switcher-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 250px;
+  background: var(--bg-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.site-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  text-align: left;
+}
+
+.site-option:last-child {
+  border-bottom: none;
+}
+
+.site-option:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.site-option.active {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.site-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.site-option-icon {
+  font-size: 1.2rem;
+  min-width: 24px;
+  text-align: center;
+}
+
+.site-option.active .site-option-icon {
+  color: #3b82f6;
+}
+
+.site-option-info {
+  flex: 1;
+}
+
+.site-option-name {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.site-option-id {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}

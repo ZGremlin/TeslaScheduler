@@ -2,7 +2,6 @@ const cron = require("node-cron");
 const DatabaseService = require("./database");
 const TeslaAPI = require("./teslaAPI");
 const WeatherAlertService = require("./weatherAlertService");
-const ntfy = require("./ntfy");
 
 class TaskScheduler {
 	constructor() {
@@ -131,10 +130,9 @@ class TaskScheduler {
 				throw new Error("Authentication token expired - automatic refresh should handle this");
 			}
 
-			// Get site configuration
-			const config = await this.db.getPowerwallConfig();
-			if (!config || !config.site_id) {
-				throw new Error("Powerwall site not configured");
+			// Verify task has site_id
+			if (!task.site_id) {
+				throw new Error("Task has no site_id - database migration may be required");
 			}
 
 			// Handle auto storm watch if enabled
@@ -156,7 +154,7 @@ class TaskScheduler {
 
 							await this.teslaAPI.updateSiteAddress(
 								authData.access_token,
-								config.site_id,
+								task.site_id,
 								weatherResult.address,
 							);
 
@@ -174,18 +172,20 @@ class TaskScheduler {
 			// Execute the operation mode change
 			await this.teslaAPI.setOperationMode(
 				authData.access_token,
-				config.site_id,
+				task.site_id,
 				task.mode,
 				task.backup_reserve,
 			);
 
 			// Execute manual storm watch change if specified (and not auto)
-			if (task.storm_watch === "enable") {
-				console.log(`  ⛈️  Enabling Storm Watch for task ${task.id}`);
-				await this.teslaAPI.enableStormWatch(authData.access_token, config.site_id);
-			} else if (task.storm_watch === "disable") {
-				console.log(`  ☀️  Disabling Storm Watch for task ${task.id}`);
-				await this.teslaAPI.disableStormWatch(authData.access_token, config.site_id);
+			if (!task.auto_storm_watch) {
+				if (task.storm_watch === "enable") {
+					console.log(`  ⛈️  Enabling Storm Watch for task ${task.id}`);
+					await this.teslaAPI.enableStormWatch(authData.access_token, task.site_id);
+				} else if (task.storm_watch === "disable") {
+					console.log(`  ☀️  Disabling Storm Watch for task ${task.id}`);
+					await this.teslaAPI.disableStormWatch(authData.access_token, task.site_id);
+				}
 			}
 
 			// Log success
@@ -194,12 +194,8 @@ class TaskScheduler {
 
 			// Clear any retry timer on success
 			this.clearRetryTimer(task.id);
-
-			// Notify of task success
-			ntfy.sendPushNotification(`✅ Task "${task.name}" executed successfully`);
 		} catch (error) {
 			console.error(`❌ Task ${task.id} failed:`, error.message);
-			ntfy.sendPushNotification(`❌ Task "${task.name}" failed: ${error.message}`);
 			await this.db.logTaskExecution(task.id, "failed", error.message);
 
 			// Schedule retry on failure

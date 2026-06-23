@@ -20,7 +20,7 @@ class Ntfy {
 		try {
 			await this.client.post(`${this.baseUrl}/${TOPIC}`, message);
 		} catch (error) {
-			throw new Error(`Notification failed: ${error.message}`);
+			console.error(`Notification failed: ${error.message}`);
 		}
 	}
 }

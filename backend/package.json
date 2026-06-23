@@ -7,8 +7,7 @@
 		"start": "node server.js",
 		"dev": "nodemon server.js",
 		"init-db": "node initDb.js",
-		"migrate": "node migrate-storm-watch.js && node migrate-auto-storm-watch.js",
-		"storm": "node migrate-auto-storm-watch.js",
+		"migrate": "node migrate-storm-watch.js && node migrate-auto-storm-watch.js && node migrate-task-site-association.js",
 		"test-api": "node testAPI.js"
 	},
 	"dependencies": {

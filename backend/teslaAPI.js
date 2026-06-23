@@ -5,38 +5,35 @@ const ntfy = require("./ntfy");
 
 class TeslaAPI {
 	constructor() {
-		this.baseUrl = "https://owner-api.teslamotors.com";
+		this.fleetBaseUrl =
+			process.env.TESLA_FLEET_BASE_URL || "https://fleet-api.prd.na.vn.cloud.tesla.com";
 		this.authUrl = "https://auth.tesla.com";
+		this.clientId = process.env.TESLA_CLIENT_ID;
+		this.clientSecret = process.env.TESLA_CLIENT_SECRET;
+		this.redirectUri = process.env.TESLA_REDIRECT_URI;
 
 		this.client = axios.create({
 			timeout: 30000,
 		});
 	}
 
-	/**
-	 * Generate code verifier and challenge for PKCE
-	 */
 	generateCodeChallenge() {
 		const verifier = crypto.randomBytes(32).toString("base64url");
 		const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
-
 		return { verifier, challenge };
 	}
 
-	/**
-	 * Step 1: Get authorization URL for user to login
-	 */
 	getAuthorizationUrl() {
 		const { verifier, challenge } = this.generateCodeChallenge();
 		const state = crypto.randomBytes(16).toString("hex");
 
 		const params = new URLSearchParams({
-			client_id: "ownerapi",
+			client_id: this.clientId,
 			code_challenge: challenge,
 			code_challenge_method: "S256",
-			redirect_uri: "https://auth.tesla.com/void/callback",
+			redirect_uri: this.redirectUri,
 			response_type: "code",
-			scope: "openid email offline_access",
+			scope: "openid offline_access energy_device_data energy_cmds",
 			state: state,
 		});
 
@@ -47,18 +44,57 @@ class TeslaAPI {
 		};
 	}
 
-	/**
-	 * Step 2: Exchange authorization code for access token
-	 */
+	async getPartnerToken() {
+		const params = new URLSearchParams({
+			grant_type: "client_credentials",
+			client_id: this.clientId,
+			client_secret: this.clientSecret,
+			scope: "openid",
+			audience: this.fleetBaseUrl,
+		});
+
+		const response = await this.client.post(
+			`${this.authUrl}/oauth2/v3/token`,
+			params.toString(),
+			{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+		);
+
+		return response.data.access_token;
+	}
+
+	async registerPartnerAccount(domain) {
+		const partnerToken = await this.getPartnerToken();
+
+		const response = await this.client.post(
+			`${this.fleetBaseUrl}/api/1/partner_accounts`,
+			{ domain },
+			{
+				headers: {
+					Authorization: `Bearer ${partnerToken}`,
+					"Content-Type": "application/json",
+				},
+			},
+		);
+
+		return response.data;
+	}
+
 	async exchangeCodeForToken(code, verifier) {
 		try {
-			const response = await this.client.post(`${this.authUrl}/oauth2/v3/token`, {
+			const params = new URLSearchParams({
 				grant_type: "authorization_code",
-				client_id: "ownerapi",
+				client_id: this.clientId,
+				client_secret: this.clientSecret,
 				code: code,
 				code_verifier: verifier,
-				redirect_uri: "https://auth.tesla.com/void/callback",
+				redirect_uri: this.redirectUri,
 			});
+
+			const response = await this.client.post(
+				`${this.authUrl}/oauth2/v3/token`,
+				params.toString(),
+				{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+			);
 
 			return {
 				access_token: response.data.access_token,
@@ -66,21 +102,29 @@ class TeslaAPI {
 				expires_at: Date.now() + response.data.expires_in * 1000,
 			};
 		} catch (error) {
-			ntfy.sendPushNotification(`❌ Tesla token exchange failed: ${error.message}`);
-			throw new Error(`Token exchange failed: ${error.message}`);
+			const detail = error.response?.data
+				? JSON.stringify(error.response.data)
+				: error.message;
+			console.error("Token exchange error response:", detail);
+			ntfy.sendPushNotification(`❌ Tesla token exchange failed: ${detail}`);
+			throw new Error(`Token exchange failed: ${detail}`);
 		}
 	}
 
-	/**
-	 * Refresh access token using refresh token
-	 */
 	async refreshAccessToken(refreshToken) {
 		try {
-			const response = await this.client.post(`${this.authUrl}/oauth2/v3/token`, {
+			const params = new URLSearchParams({
 				grant_type: "refresh_token",
-				client_id: "ownerapi",
+				client_id: this.clientId,
+				client_secret: this.clientSecret,
 				refresh_token: refreshToken,
 			});
+
+			const response = await this.client.post(
+				`${this.authUrl}/oauth2/v3/token`,
+				params.toString(),
+				{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+			);
 
 			ntfy.sendPushNotification("🔄 Tesla token refreshed successfully");
 
@@ -95,16 +139,12 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Get list of energy sites (Powerwalls)
-	 */
 	async getEnergySites(token) {
 		try {
-			const response = await this.client.get(`${this.baseUrl}/api/1/products`, {
+			const response = await this.client.get(`${this.fleetBaseUrl}/api/1/products`, {
 				headers: { Authorization: `Bearer ${token}` },
 			});
 
-			// Filter for energy products (Powerwalls)
 			const energySites = response.data.response.filter(
 				(product) => product.resource_type === "battery",
 			);
@@ -116,13 +156,10 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Get site status and information
-	 */
 	async getSiteStatus(token, siteId) {
 		try {
 			const response = await this.client.get(
-				`${this.baseUrl}/api/1/energy_sites/${siteId}/site_status`,
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/site_status`,
 				{
 					headers: { Authorization: `Bearer ${token}` },
 				},
@@ -136,13 +173,10 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Get site info and configuration
-	 */
 	async getSiteInfo(token, siteId) {
 		try {
 			const response = await this.client.get(
-				`${this.baseUrl}/api/1/energy_sites/${siteId}/site_info`,
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/site_info`,
 				{
 					headers: { Authorization: `Bearer ${token}` },
 				},
@@ -156,13 +190,10 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Get live site status (real-time data)
-	 */
 	async getLiveStatus(token, siteId) {
 		try {
 			const response = await this.client.get(
-				`${this.baseUrl}/api/1/energy_sites/${siteId}/live_status`,
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/live_status`,
 				{
 					headers: { Authorization: `Bearer ${token}` },
 				},
@@ -171,22 +202,16 @@ class TeslaAPI {
 		} catch (error) {
 			const errorMsg = error.response?.data?.error || error.message;
 			const statusCode = error.response?.status;
-			// Live status might not be available for all sites
 			ntfy.sendPushNotification(`⚠ Failed to get live status: ${errorMsg}`);
 			console.warn(`Live status not available (${statusCode}): ${errorMsg}`);
 			return null;
 		}
 	}
 
-	/**
-	 * Get complete site data (combines multiple endpoints)
-	 */
 	async getCompleteSiteData(token, siteId) {
 		try {
-			// Get site info which includes battery percentage and operation mode
 			const siteInfo = await this.getSiteInfo(token, siteId);
 
-			// Try to get live status for real-time data
 			let liveStatus = null;
 			try {
 				liveStatus = await this.getLiveStatus(token, siteId);
@@ -204,16 +229,8 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Set operation mode
-	 * @param {string} token - Auth token
-	 * @param {number} siteId - Energy site ID
-	 * @param {string} mode - 'self_powered' or 'time_based_control'
-	 * @param {number} backupReserve - Backup reserve percentage (0-100)
-	 */
 	async setOperationMode(token, siteId, mode, backupReserve) {
 		try {
-			// Map mode to Tesla's API values
 			const defaultRealMode = mode === "self_powered" ? "self_consumption" : "autonomous";
 
 			const payload = {
@@ -223,20 +240,28 @@ class TeslaAPI {
 
 			console.log("submitting operation change", payload);
 
-			await this.client.post(`${this.baseUrl}/api/1/energy_sites/${siteId}/operation`, payload, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
+			await this.client.post(
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/operation`,
+				payload,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
+					},
 				},
-			});
+			);
 
 			console.log("submitting backup % change", payload);
-			await this.client.post(`${this.baseUrl}/api/1/energy_sites/${siteId}/backup`, payload, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
+			await this.client.post(
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/backup`,
+				payload,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
+					},
 				},
-			});
+			);
 
 			return { success: true, mode, backupReserve };
 		} catch (error) {
@@ -245,9 +270,6 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Get current operation mode
-	 */
 	async getOperationMode(token, siteId) {
 		try {
 			const siteInfo = await this.getSiteInfo(token, siteId);
@@ -261,9 +283,6 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Get battery percentage and energy data
-	 */
 	async getBatteryStatus(token, siteId) {
 		try {
 			const siteInfo = await this.getSiteInfo(token, siteId);
@@ -278,14 +297,11 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Enable Storm Watch mode
-	 */
 	async enableStormWatch(token, siteId) {
 		try {
 			console.log("setting storm mode to active");
 			const req = await this.client.post(
-				`${this.baseUrl}/api/1/energy_sites/${siteId}/storm_mode`,
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/storm_mode`,
 				{ enabled: true },
 				{
 					headers: {
@@ -302,13 +318,10 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Disable Storm Watch mode
-	 */
 	async disableStormWatch(token, siteId) {
 		try {
 			await this.client.post(
-				`${this.baseUrl}/api/1/energy_sites/${siteId}/storm_mode`,
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/storm_mode`,
 				{ enabled: false },
 				{
 					headers: {
@@ -324,9 +337,6 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Get current storm watch status
-	 */
 	async getStormWatchStatus(token, siteId) {
 		try {
 			const siteInfo = await this.getSiteInfo(token, siteId);
@@ -339,12 +349,6 @@ class TeslaAPI {
 		}
 	}
 
-	/**
-	 * Update site address (triggers Storm Watch if in affected area)
-	 * @param {string} token - Auth token
-	 * @param {number} siteId - Energy site ID
-	 * @param {object} address - Address object with all required fields
-	 */
 	async updateSiteAddress(token, siteId, address) {
 		try {
 			const payload = {
@@ -361,12 +365,16 @@ class TeslaAPI {
 				},
 			};
 
-			await this.client.post(`${this.baseUrl}/api/1/energy_sites/${siteId}/site_address`, payload, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
+			await this.client.post(
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/site_address`,
+				payload,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
+					},
 				},
-			});
+			);
 
 			return {
 				success: true,

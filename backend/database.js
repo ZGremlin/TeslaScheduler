@@ -84,28 +84,79 @@ class DatabaseService {
 	// Powerwall Config Methods
 	async savePowerwallConfig(siteId, siteName) {
 		return new Promise((resolve, reject) => {
-			this.db.run("DELETE FROM powerwall_config", (err) => {
-				if (err) {
-					reject(err);
-					return;
-				}
+			// Check if site already exists
+			this.db.get(
+				"SELECT id FROM powerwall_config WHERE site_id = ?",
+				[siteId],
+				(err, existing) => {
+					if (err) {
+						reject(err);
+						return;
+					}
 
-				this.db.run(
-					`INSERT INTO powerwall_config (site_id, site_name, updated_at) 
-           VALUES (?, ?, CURRENT_TIMESTAMP)`,
-					[siteId, siteName],
-					function (err) {
-						if (err) reject(err);
-						else resolve({ id: this.lastID });
-					},
-				);
-			});
+					if (existing) {
+						// Site exists, update timestamp to make it active
+						this.db.run(
+							`UPDATE powerwall_config 
+               SET site_name = ?, updated_at = CURRENT_TIMESTAMP 
+               WHERE site_id = ?`,
+							[siteName, siteId],
+							function (err) {
+								if (err) reject(err);
+								else resolve({ id: existing.id });
+							},
+						);
+					} else {
+						// New site, insert it
+						this.db.run(
+							`INSERT INTO powerwall_config (site_id, site_name, updated_at) 
+               VALUES (?, ?, CURRENT_TIMESTAMP)`,
+							[siteId, siteName],
+							function (err) {
+								if (err) reject(err);
+								else resolve({ id: this.lastID });
+							},
+						);
+					}
+				},
+			);
 		});
 	}
 
 	async getPowerwallConfig() {
 		return new Promise((resolve, reject) => {
-			this.db.get("SELECT * FROM powerwall_config ORDER BY id DESC LIMIT 1", (err, row) => {
+			this.db.get("SELECT * FROM powerwall_config ORDER BY updated_at DESC LIMIT 1", (err, row) => {
+				if (err) reject(err);
+				else resolve(row);
+			});
+		});
+	}
+
+	async getAllSites() {
+		return new Promise((resolve, reject) => {
+			this.db.all("SELECT * FROM powerwall_config ORDER BY site_name ASC", (err, rows) => {
+				if (err) reject(err);
+				else resolve(rows);
+			});
+		});
+	}
+
+	async setActiveSite(siteId) {
+		return new Promise((resolve, reject) => {
+			this.db.run(
+				"UPDATE powerwall_config SET updated_at = CURRENT_TIMESTAMP WHERE site_id = ?",
+				[siteId],
+				function (err) {
+					if (err) reject(err);
+					else resolve({ changes: this.changes });
+				},
+			);
+		});
+	}
+
+	async getSiteBySiteId(siteId) {
+		return new Promise((resolve, reject) => {
+			this.db.get("SELECT * FROM powerwall_config WHERE site_id = ?", [siteId], (err, row) => {
 				if (err) reject(err);
 				else resolve(row);
 			});
@@ -113,12 +164,20 @@ class DatabaseService {
 	}
 
 	// Scheduled Task Methods
-	async createTask(name, time, mode, backupReserve, stormWatch = "no_change", autoStormWatch = 0) {
+	async createTask(
+		name,
+		time,
+		mode,
+		backupReserve,
+		stormWatch = "no_change",
+		autoStormWatch = 0,
+		siteId,
+	) {
 		return new Promise((resolve, reject) => {
 			this.db.run(
-				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, storm_watch, auto_storm_watch, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-				[name, time, mode, backupReserve, stormWatch, autoStormWatch],
+				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, storm_watch, auto_storm_watch, site_id, updated_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+				[name, time, mode, backupReserve, stormWatch, autoStormWatch, siteId],
 				function (err) {
 					if (err) reject(err);
 					else resolve({ id: this.lastID });
@@ -133,6 +192,19 @@ class DatabaseService {
 				if (err) reject(err);
 				else resolve(rows);
 			});
+		});
+	}
+
+	async getTasksBySite(siteId) {
+		return new Promise((resolve, reject) => {
+			this.db.all(
+				"SELECT * FROM scheduled_tasks WHERE site_id = ? ORDER BY time ASC",
+				[siteId],
+				(err, rows) => {
+					if (err) reject(err);
+					else resolve(rows);
+				},
+			);
 		});
 	}
 
@@ -154,13 +226,14 @@ class DatabaseService {
 		enabled,
 		stormWatch = "no_change",
 		autoStormWatch = 0,
+		siteId,
 	) {
 		return new Promise((resolve, reject) => {
 			this.db.run(
 				`UPDATE scheduled_tasks 
-         SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, storm_watch = ?, auto_storm_watch = ?, updated_at = CURRENT_TIMESTAMP
+         SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, storm_watch = ?, auto_storm_watch = ?, site_id = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-				[name, time, mode, backupReserve, enabled, stormWatch, autoStormWatch, id],
+				[name, time, mode, backupReserve, enabled, stormWatch, autoStormWatch, siteId, id],
 				function (err) {
 					if (err) reject(err);
 					else resolve({ changes: this.changes });

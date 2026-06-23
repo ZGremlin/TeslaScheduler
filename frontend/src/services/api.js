@@ -36,7 +36,6 @@ const api = axios.create({
 
 // Authentication
 export const getAuthUrl = () => api.get("/auth/url");
-export const completeAuth = (code) => api.post("/auth/callback", { code });
 export const getAuthStatus = () => api.get("/auth/status");
 export const getTokenStatus = () => api.get("/auth/token-status");
 export const refreshToken = () => api.post("/auth/refresh");
@@ -46,6 +45,10 @@ export const clearAuthLogs = () => api.delete("/auth/logs");
 
 // Configuration
 export const getConfig = () => api.get("/config");
+
+// Sites
+export const getSites = () => api.get("/sites");
+export const switchSite = (siteId) => api.post("/sites/switch", { site_id: siteId });
 
 // Tasks
 export const getTasks = () => api.get("/tasks");

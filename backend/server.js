@@ -60,21 +60,24 @@ app.get("/api/auth/url", async (req, res) => {
 	}
 });
 
-// Exchange authorization code for token
-app.post("/api/auth/callback", async (req, res) => {
+// OAuth callback - Tesla redirects the user's browser here after authorization
+app.get("/api/auth/callback", async (req, res) => {
 	try {
-		const { code } = req.body;
+		const { code, error: oauthError } = req.query;
+
+		if (oauthError) {
+			authLogger.error("CODE_EXCHANGE_ERROR", { error: oauthError });
+			return res.send(buildCallbackPage(false, oauthError));
+		}
 
 		if (!code) {
-			authLogger.error("CODE_EXCHANGE_ERROR", { error: "No authorization code provided" });
-			return res.status(400).json({ error: "Authorization code is required" });
+			authLogger.error("CODE_EXCHANGE_ERROR", { error: "No authorization code received" });
+			return res.send(buildCallbackPage(false, "No authorization code received from Tesla"));
 		}
 
 		if (!global.authVerifier) {
 			authLogger.error("CODE_EXCHANGE_ERROR", { error: "No authorization session found" });
-			return res
-				.status(400)
-				.json({ error: "No authorization session found. Please restart the auth flow." });
+			return res.send(buildCallbackPage(false, "No authorization session found. Please restart the auth flow."));
 		}
 
 		authLogger.logCodeExchangeAttempt();
@@ -84,47 +87,96 @@ app.post("/api/auth/callback", async (req, res) => {
 
 		authLogger.logCodeExchangeSuccess();
 
-		// Save tokens
 		await db.saveAuthToken(tokens.access_token, tokens.refresh_token, tokens.expires_at);
 
-		// Get energy sites
 		const sites = await teslaAPI.getEnergySites(tokens.access_token);
 
 		if (sites.length === 0) {
 			authLogger.warn("NO_SITES_FOUND", {});
-			return res.status(404).json({ error: "No Powerwall sites found on this account" });
+			return res.send(buildCallbackPage(false, "No Powerwall sites found on this account"));
 		}
 
-		// Save first site as default (in production, let user choose)
+		for (const site of sites) {
+			const siteId = site.energy_site_id.toString();
+			await db.savePowerwallConfig(siteId, site.site_name);
+		}
+
 		const firstSite = sites[0];
 		const siteId = firstSite.energy_site_id.toString();
-		await db.savePowerwallConfig(siteId, firstSite.site_name);
 
 		authLogger.logSiteConfigured(siteId, firstSite.site_name);
 		authLogger.logAuthSuccess("oauth_user", tokens.expires_at);
+		console.log(`✓ Saved ${sites.length} site(s) to database`);
 
-		// Clear temporary auth data
 		delete global.authVerifier;
 		delete global.authState;
 
-		// Schedule token refresh
 		if (tokenRefreshManager) {
 			await tokenRefreshManager.scheduleNextRefresh();
 			console.log("Token refresh scheduled after authentication");
 		}
 
-		res.json({
-			success: true,
-			message: "Authentication successful",
-			expires_at: tokens.expires_at,
-			site: {
-				id: siteId,
-				name: firstSite.site_name,
-			},
-		});
+		res.send(buildCallbackPage(true, null));
 	} catch (error) {
 		authLogger.logCodeExchangeFailure(error);
-		res.status(401).json({ error: error.message });
+		res.send(buildCallbackPage(false, error.message));
+	}
+});
+
+function buildCallbackPage(success, errorMsg) {
+	const data = success
+		? { type: "tesla_auth_success" }
+		: { type: "tesla_auth_error", error: errorMsg || "Authentication failed" };
+	// JSON.stringify produces safe JS — escape </ to prevent early </script> close
+	const dataJson = JSON.stringify(data).replace(/<\//g, "<\\/");
+
+	const bodyText = success
+		? "Authorization successful! You can close this window."
+		: `Authorization failed: ${errorMsg || "Unknown error"}`;
+
+	return `<!DOCTYPE html>
+<html>
+<head><title>Tesla Authorization</title></head>
+<body><p>${bodyText}</p>
+<script>
+(function () {
+  var data = ${dataJson};
+  if (window.opener) {
+    window.opener.postMessage(data, '*');
+    window.close();
+  } else {
+    var q = data.error
+      ? '?auth_error=' + encodeURIComponent(data.error)
+      : '?auth_success=1';
+    window.location.href = '/' + q;
+  }
+}());
+</script>
+</body>
+</html>`;
+}
+
+// One-time partner registration with Tesla Fleet API
+// Call this once before users can authenticate. Domain must match your registered app domain.
+app.post("/api/auth/register-partner", async (req, res) => {
+	try {
+		const { domain } = req.body;
+
+		if (!domain) {
+			return res.status(400).json({ error: "domain is required" });
+		}
+
+		const teslaAPI = new TeslaAPI();
+		const result = await teslaAPI.registerPartnerAccount(domain);
+
+		console.log("Partner registration result:", result);
+		res.json({ success: true, result });
+	} catch (error) {
+		const detail = error.response?.data
+			? JSON.stringify(error.response.data)
+			: error.message;
+		console.error("Partner registration error:", detail);
+		res.status(500).json({ error: detail });
 	}
 });
 
@@ -257,12 +309,92 @@ app.delete("/api/auth/logs", async (req, res) => {
 	}
 });
 
+// ============= CONFIG ROUTES =============
+
+// Get current configuration (active site info)
+app.get("/api/config", async (req, res) => {
+	try {
+		const config = await db.getPowerwallConfig();
+
+		if (!config) {
+			return res.json({
+				configured: false,
+				site_id: null,
+				site_name: null,
+			});
+		}
+
+		res.json({
+			configured: true,
+			site_id: config.site_id,
+			site_name: config.site_name,
+		});
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// ============= SITE ROUTES =============
+
+// Get all sites
+app.get("/api/sites", async (req, res) => {
+	try {
+		const sites = await db.getAllSites();
+		const activeSite = await db.getPowerwallConfig();
+
+		res.json({
+			sites: sites,
+			active_site_id: activeSite?.site_id || null,
+		});
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// Switch active site
+app.post("/api/sites/switch", async (req, res) => {
+	try {
+		const { site_id } = req.body;
+
+		if (!site_id) {
+			return res.status(400).json({ error: "site_id is required" });
+		}
+
+		// Verify site exists
+		const site = await db.getSiteBySiteId(site_id);
+		if (!site) {
+			return res.status(404).json({ error: "Site not found" });
+		}
+
+		// Set as active by updating timestamp
+		await db.setActiveSite(site_id);
+
+		console.log(`✓ Switched to site: ${site.site_name} (${site_id})`);
+
+		res.json({
+			success: true,
+			site: site,
+		});
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
 // ============= TASK ROUTES =============
 
 // Get all tasks
 app.get("/api/tasks", async (req, res) => {
 	try {
-		const tasks = await db.getAllTasks();
+		// Get active site
+		const activeSite = await db.getPowerwallConfig();
+
+		// If no site configured yet, return empty array
+		if (!activeSite || !activeSite.site_id) {
+			return res.json([]);
+		}
+
+		// Get tasks for active site only
+		const tasks = await db.getTasksBySite(activeSite.site_id);
 
 		// Add retry status to each task
 		const retryingTasks = taskScheduler.getRetryStatus();
@@ -273,6 +405,7 @@ app.get("/api/tasks", async (req, res) => {
 
 		res.json(tasksWithRetryStatus);
 	} catch (error) {
+		console.error("Error in GET /api/tasks:", error);
 		res.status(500).json({ error: error.message });
 	}
 });
@@ -330,6 +463,14 @@ app.post("/api/tasks", async (req, res) => {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
 		}
 
+		// Get active site
+		const activeSite = await db.getPowerwallConfig();
+		if (!activeSite) {
+			return res
+				.status(400)
+				.json({ error: "No active site configured. Please authenticate first." });
+		}
+
 		const result = await db.createTask(
 			name,
 			time,
@@ -337,6 +478,7 @@ app.post("/api/tasks", async (req, res) => {
 			backup_reserve,
 			stormWatchValue,
 			autoStormWatchValue,
+			activeSite.site_id,
 		);
 		const newTask = await db.getTaskById(result.id);
 
@@ -389,6 +531,12 @@ app.put("/api/tasks/:id", async (req, res) => {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
 		}
 
+		// Get existing task to preserve site_id
+		const existingTask = await db.getTaskById(taskId);
+		if (!existingTask) {
+			return res.status(404).json({ error: "Task not found" });
+		}
+
 		await db.updateTask(
 			taskId,
 			name,
@@ -398,6 +546,7 @@ app.put("/api/tasks/:id", async (req, res) => {
 			enabled ? 1 : 0,
 			stormWatchValue,
 			autoStormWatchValue,
+			existingTask.site_id, // Preserve original site_id
 		);
 		const updatedTask = await db.getTaskById(taskId);
 
@@ -616,6 +765,16 @@ app.post("/api/tasks/:id/execute", async (req, res) => {
 	} catch (error) {
 		res.status(500).json({ error: error.message });
 	}
+});
+
+// Tesla Fleet API required public key endpoint
+app.get("/.well-known/appspecific/com.tesla.3p.public-key.pem", (req, res) => {
+	const keyPath = require("path").join(__dirname, "tesla-public-key.pem");
+	if (!require("fs").existsSync(keyPath)) {
+		return res.status(404).send("Public key not found. Run: node generateKeys.js");
+	}
+	res.setHeader("Content-Type", "application/x-pem-file");
+	res.sendFile(keyPath);
 });
 
 // Health check

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./styles/App.css";
 import AuthenticationModal from "./components/AuthenticationModal";
 import AuthLogsModal from "./components/AuthLogsModal";
+import SiteSwitcher from "./components/SiteSwitcher";
 import TaskList from "./components/TaskList";
 import TaskModal from "./components/TaskModal";
 import PowerwallStatus from "./components/PowerwallStatus";
@@ -50,16 +51,20 @@ function App() {
 		}
 	};
 
-	const handleLogin = async (authCode) => {
+	const handleLogin = async () => {
 		try {
-			await api.completeAuth(authCode);
-			const authRes = await api.getAuthStatus();
-			const configRes = await api.getConfig();
+			const [authRes, configRes, tasksRes] = await Promise.all([
+				api.getAuthStatus(),
+				api.getConfig(),
+				api.getTasks(),
+			]);
+
 			setAuthStatus(authRes.data);
 			setConfig(configRes.data);
+			setTasks(tasksRes.data);
 			setShowAuthModal(false);
 		} catch (err) {
-			throw new Error("Authentication failed: " + err.response?.data?.error || err.message);
+			throw new Error("Failed to reload after authentication: " + err.message);
 		}
 	};
 
@@ -127,6 +132,19 @@ function App() {
 		}
 	};
 
+	const handleSiteChange = async (siteId) => {
+		console.log("Site switched to:", siteId);
+
+		// Reload tasks for the new active site
+		try {
+			const tasksRes = await api.getTasks();
+			setTasks(tasksRes.data);
+		} catch (error) {
+			console.error("Failed to reload tasks after site switch:", error);
+			setError("Failed to load tasks for selected site");
+		}
+	};
+
 	if (loading) {
 		return (
 			<div className="app">
@@ -177,11 +195,7 @@ function App() {
 					</div>
 					<div className="header-right">
 						<div className="status-indicators">
-							{isConfigured && (
-								<div className="status-badge status-success">
-									✓ Site: {config.site_name || "Configured"}
-								</div>
-							)}
+							{isAuthenticated && <SiteSwitcher onSiteChange={handleSiteChange} />}
 							<div
 								className={`status-badge ${isAuthenticated ? "status-success" : "status-error"}`}
 							>
