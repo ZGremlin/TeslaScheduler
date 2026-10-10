@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./styles/App.css";
 import AuthenticationModal from "./components/AuthenticationModal";
 import AuthLogsModal from "./components/AuthLogsModal";
+import AccountModal from "./components/AccountModal";
 import SiteSwitcher from "./components/SiteSwitcher";
 import TaskList from "./components/TaskList";
 import TaskModal from "./components/TaskModal";
@@ -23,6 +24,8 @@ function App() {
 	const [error, setError] = useState(null);
 	const [activeTab, setActiveTab] = useState("tasks");
 	const [activeSiteId, setActiveSiteId] = useState(null);
+	const [showAccountModal, setShowAccountModal] = useState(false);
+	const [credentialsVersion, setCredentialsVersion] = useState(0);
 
 	useEffect(() => {
 		loadInitialData();
@@ -65,9 +68,21 @@ function App() {
 			setConfig(configRes.data);
 			setTasks(tasksRes.data);
 			setShowAuthModal(false);
+			// Remount the site switcher and storm watch badge with the new credentials
+			setCredentialsVersion((version) => version + 1);
 		} catch (err) {
 			throw new Error("Failed to reload after authentication: " + err.message);
 		}
+	};
+
+	const handleCredentialsChanged = async () => {
+		await handleLogin();
+		setShowAccountModal(false);
+	};
+
+	const handleReauthenticate = () => {
+		setShowAccountModal(false);
+		setShowAuthModal(true);
 	};
 
 	const handleCreateTask = () => {
@@ -198,13 +213,19 @@ function App() {
 					</div>
 					<div className="header-right">
 						<div className="status-indicators">
-							{isAuthenticated && <SiteSwitcher onSiteChange={handleSiteChange} />}
-							{isAuthenticated && isConfigured && <StormWatchBadge key={activeSiteId} />}
-							<div
-								className={`status-badge ${isAuthenticated ? "status-success" : "status-error"}`}
+							{isAuthenticated && (
+								<SiteSwitcher key={credentialsVersion} onSiteChange={handleSiteChange} />
+							)}
+							{isAuthenticated && isConfigured && (
+								<StormWatchBadge key={`${credentialsVersion}-${activeSiteId}`} />
+							)}
+							<button
+								className={`status-badge status-badge-button ${isAuthenticated ? "status-success" : "status-error"}`}
+								onClick={() => setShowAccountModal(true)}
+								title="View or edit Tesla tokens and site ID, log out or re-authenticate"
 							>
 								{isAuthenticated ? "✓ Authenticated" : "✗ Not Authenticated"}
-							</div>
+							</button>
 						</div>
 						<button
 							className="btn btn-secondary btn-small"
@@ -289,7 +310,16 @@ function App() {
 				<AuthenticationModal onLogin={handleLogin} onClose={() => setShowAuthModal(false)} />
 			)}
 
-			{showAuthLogsModal && <AuthLogsModal onClose={() => setShowAuthLogsModal(false)} />}
+			{showAccountModal && (
+				<AccountModal
+					onClose={() => setShowAccountModal(false)}
+					onSaved={handleCredentialsChanged}
+					onLogout={handleCredentialsChanged}
+					onReauthenticate={handleReauthenticate}
+				/>
+			)}
+
+			{showAuthLogsModal &&<AuthLogsModal onClose={() => setShowAuthLogsModal(false)} />}
 
 			{showTaskModal && (
 				<TaskModal

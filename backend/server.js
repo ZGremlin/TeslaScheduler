@@ -268,6 +268,102 @@ app.get("/api/auth/token-status", async (req, res) => {
 	}
 });
 
+// Read the expiry time (ms) out of a Tesla access token, which is a JWT
+function getTokenExpiry(accessToken) {
+	try {
+		const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString());
+		return payload.exp ? payload.exp * 1000 : null;
+	} catch (error) {
+		return null;
+	}
+}
+
+// Get stored credentials (tokens and active site) for viewing/editing
+app.get("/api/auth/credentials", async (req, res) => {
+	try {
+		const authData = await db.getAuthToken();
+		const config = await db.getPowerwallConfig();
+
+		res.json({
+			access_token: authData?.access_token || "",
+			refresh_token: authData?.refresh_token || "",
+			expires_at: authData?.expires_at || null,
+			site_id: config?.site_id || "",
+			site_name: config?.site_name || "",
+		});
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// Manually update stored credentials
+app.put("/api/auth/credentials", async (req, res) => {
+	try {
+		const accessToken = (req.body.access_token || "").trim();
+		const refreshToken = (req.body.refresh_token || "").trim();
+		const siteId = (req.body.site_id || "").toString().trim();
+
+		if (!accessToken) {
+			return res.status(400).json({ error: "Access token is required" });
+		}
+
+		const authData = await db.getAuthToken();
+
+		if (!authData || accessToken !== authData.access_token) {
+			// Without a readable expiry, assume Tesla's standard 8 hour lifetime
+			const expiresAt = getTokenExpiry(accessToken) || Date.now() + 8 * 60 * 60 * 1000;
+			await db.saveAuthToken(accessToken, refreshToken, expiresAt);
+		} else if (refreshToken && refreshToken !== authData.refresh_token) {
+			await db.saveAuthToken(accessToken, refreshToken, authData.expires_at);
+		}
+
+		const config = await db.getPowerwallConfig();
+
+		if (siteId && siteId !== config?.site_id) {
+			const knownSite = await db.getSiteBySiteId(siteId);
+
+			if (knownSite) {
+				await db.setActiveSite(siteId);
+			} else if (config) {
+				await db.changeSiteId(config.site_id, siteId);
+			} else {
+				await db.savePowerwallConfig(siteId, "Powerwall");
+			}
+
+			// Tasks carry their site ID, so reload them
+			await taskScheduler.refreshSchedule();
+		}
+
+		authLogger.warn("CREDENTIALS_EDITED", { site_id: siteId || config?.site_id });
+
+		if (tokenRefreshManager) {
+			await tokenRefreshManager.scheduleNextRefresh();
+		}
+
+		res.json({ success: true });
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// Logout - remove stored tokens (sites and tasks are kept)
+app.post("/api/auth/logout", async (req, res) => {
+	try {
+		await db.deleteAuthTokens();
+
+		if (tokenRefreshManager) {
+			tokenRefreshManager.clearTimers();
+		}
+
+		authLogger.warn("LOGOUT", {});
+		console.log("✓ Logged out - stored tokens removed");
+
+		res.json({ success: true });
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
 // ============= AUTH LOG ROUTES =============
 
 // Get auth logs

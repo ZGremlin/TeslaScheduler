@@ -81,6 +81,15 @@ class DatabaseService {
 		});
 	}
 
+	async deleteAuthTokens() {
+		return new Promise((resolve, reject) => {
+			this.db.run("DELETE FROM auth_tokens", function (err) {
+				if (err) reject(err);
+				else resolve({ changes: this.changes });
+			});
+		});
+	}
+
 	// Powerwall Config Methods
 	async savePowerwallConfig(siteId, siteName) {
 		return new Promise((resolve, reject) => {
@@ -151,6 +160,29 @@ class DatabaseService {
 					else resolve({ changes: this.changes });
 				},
 			);
+		});
+	}
+
+	// Change a site's ID, keeping its tasks attached to it
+	async changeSiteId(oldSiteId, newSiteId) {
+		return new Promise((resolve, reject) => {
+			this.db.serialize(() => {
+				this.db.run(
+					"UPDATE scheduled_tasks SET site_id = ? WHERE site_id = ?",
+					[newSiteId, oldSiteId],
+					(err) => {
+						if (err) reject(err);
+					},
+				);
+				this.db.run(
+					"UPDATE powerwall_config SET site_id = ?, updated_at = CURRENT_TIMESTAMP WHERE site_id = ?",
+					[newSiteId, oldSiteId],
+					function (err) {
+						if (err) reject(err);
+						else resolve({ changes: this.changes });
+					},
+				);
+			});
 		});
 	}
 
