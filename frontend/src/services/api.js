@@ -70,5 +70,6 @@ export const getLogs = (taskId = null, limit = 100) => {
 // Powerwall Status
 export const getPowerwallStatus = () => api.get("/powerwall/status");
 export const getEnergySites = () => api.get("/powerwall/sites");
+export const setStormWatch = (enabled) => api.post("/powerwall/storm-watch", { enabled });
 
 export default api;

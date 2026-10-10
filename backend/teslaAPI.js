@@ -313,8 +313,11 @@ class TeslaAPI {
 			console.log("storm mode response", req.data);
 			return { success: true, storm_watch: "enabled" };
 		} catch (error) {
-			ntfy.sendPushNotification(`❌ Failed to enable storm watch: ${error.message}`);
-			throw new Error(`Failed to enable storm watch: ${error.message}`);
+			const detail = error.response?.data
+				? JSON.stringify(error.response.data)
+				: error.message;
+			ntfy.sendPushNotification(`❌ Failed to enable storm watch: ${detail}`);
+			throw new Error(`Failed to enable storm watch: ${detail}`);
 		}
 	}
 
@@ -332,8 +335,11 @@ class TeslaAPI {
 			);
 			return { success: true, storm_watch: "disabled" };
 		} catch (error) {
-			ntfy.sendPushNotification(`❌ Failed to disable storm watch: ${error.message}`);
-			throw new Error(`Failed to disable storm watch: ${error.message}`);
+			const detail = error.response?.data
+				? JSON.stringify(error.response.data)
+				: error.message;
+			ntfy.sendPushNotification(`❌ Failed to disable storm watch: ${detail}`);
+			throw new Error(`Failed to disable storm watch: ${detail}`);
 		}
 	}
 

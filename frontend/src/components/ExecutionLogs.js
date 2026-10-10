@@ -31,6 +31,9 @@ function ExecutionLogs({ tasks }) {
 		if (status === "success") {
 			return <span className="status-badge status-success">✓ Success</span>;
 		}
+		if (status === "persistence") {
+			return <span className="status-badge status-warning">🔁 Persistence</span>;
+		}
 		return <span className="status-badge status-error">✗ Failed</span>;
 	};
 
@@ -98,7 +101,11 @@ function ExecutionLogs({ tasks }) {
 									<td>{getStatusBadge(log.status)}</td>
 									<td>
 										{log.error_message ? (
-											<span className="error-message">{log.error_message}</span>
+											<span
+												className={log.status === "failed" ? "error-message" : "success-message"}
+											>
+												{log.error_message}
+											</span>
 										) : (
 											<span className="success-message">Executed successfully</span>
 										)}

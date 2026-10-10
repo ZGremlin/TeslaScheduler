@@ -117,6 +117,99 @@ pre {
   gap: 0.5rem;
 }
 
+.battery-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.battery-icon {
+  position: relative;
+  width: 34px;
+  height: 16px;
+  padding: 2px;
+  border: 2px solid var(--text-secondary);
+  border-radius: 4px;
+}
+
+/* Battery terminal */
+.battery-icon::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: -5px;
+  width: 3px;
+  height: 6px;
+  background: var(--text-secondary);
+  border-radius: 0 2px 2px 0;
+}
+
+.battery-icon-fill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: 1px;
+  transition: width 0.5s ease;
+}
+
+.battery-icon-bolt {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.battery-charging {
+  color: var(--success);
+}
+
+.battery-charging .battery-icon {
+  border-color: var(--success);
+}
+
+.battery-charging .battery-icon::after {
+  background: var(--success);
+}
+
+.battery-charging .battery-icon-fill {
+  animation: battery-charge-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes battery-charge-pulse {
+  0%, 100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battery-charging .battery-icon-fill {
+    animation: none;
+  }
+}
+
+.status-badge-button {
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.status-badge-button:hover:not(:disabled) {
+  filter: brightness(1.25);
+}
+
+.status-badge-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .status-success {
   background: rgba(16, 185, 129, 0.15);
   color: var(--success);
@@ -127,6 +220,12 @@ pre {
   background: rgba(245, 158, 11, 0.15);
   color: var(--warning);
   border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.status-neutral {
+  background: rgba(160, 160, 184, 0.15);
+  color: var(--text-secondary);
+  border: 1px solid rgba(160, 160, 184, 0.3);
 }
 
 .status-error {

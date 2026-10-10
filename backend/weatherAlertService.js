@@ -224,6 +224,7 @@ class WeatherAlertService {
 						success: true,
 						address: address,
 						alert: {
+							id: alert.id || alert.properties.id,
 							event: event,
 							headline: headline,
 							severity: alert.properties.severity,
@@ -244,8 +245,9 @@ class WeatherAlertService {
 
 	/**
 	 * Main function: Check for severe weather and return address if found
+	 * Alerts whose id is in excludeAlertIds are skipped, so callers can ask for a different event
 	 */
-	async checkForSevereWeatherAndGetAddress(googleMapsApiKey) {
+	async checkForSevereWeatherAndGetAddress(googleMapsApiKey, excludeAlertIds = []) {
 		try {
 			console.log("🔍 Starting severe weather check...");
 
@@ -263,12 +265,34 @@ class WeatherAlertService {
 
 			console.log(`⚠️  Found ${alerts.length} severe weather alert(s)`);
 
-			// Process the first severe alert
-			const result = await this.processAlertForAddress(alerts[0], googleMapsApiKey);
+			const candidates = alerts.filter(
+				(alert) => !excludeAlertIds.includes(alert.id || alert.properties?.id),
+			);
 
-			console.log("✅ Successfully processed weather alert");
+			if (candidates.length === 0) {
+				console.log("ℹ️  All active severe weather alerts have already been tried");
+				return {
+					success: false,
+					message: "No new severe weather alerts available",
+					alertsChecked: alerts.length,
+					exhausted: true,
+				};
+			}
 
-			return result;
+			// Try alerts in order until one yields a usable address
+			let lastError = null;
+			for (const alert of candidates.slice(0, 5)) {
+				try {
+					const result = await this.processAlertForAddress(alert, googleMapsApiKey);
+					console.log("✅ Successfully processed weather alert");
+					return result;
+				} catch (error) {
+					console.warn(`   ${error.message}`);
+					lastError = error;
+				}
+			}
+
+			throw lastError;
 		} catch (error) {
 			console.error("❌ Weather alert check failed:", error.message);
 			throw error;

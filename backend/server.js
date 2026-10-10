@@ -398,9 +398,11 @@ app.get("/api/tasks", async (req, res) => {
 
 		// Add retry status to each task
 		const retryingTasks = taskScheduler.getRetryStatus();
+		const persistingTasks = taskScheduler.getPersistenceStatus();
 		const tasksWithRetryStatus = tasks.map((task) => ({
 			...task,
 			is_retrying: retryingTasks.includes(task.id),
+			is_persisting: persistingTasks.includes(task.id),
 		}));
 
 		res.json(tasksWithRetryStatus);
@@ -426,7 +428,8 @@ app.get("/api/tasks/:id", async (req, res) => {
 // Create new task
 app.post("/api/tasks", async (req, res) => {
 	try {
-		const { name, time, mode, backup_reserve, storm_watch, auto_storm_watch } = req.body;
+		const { name, time, mode, backup_reserve, storm_watch, auto_storm_watch, persistence } =
+			req.body;
 
 		// Validation
 		if (!name || !time || !mode || backup_reserve === undefined) {
@@ -458,6 +461,9 @@ app.post("/api/tasks", async (req, res) => {
 			});
 		}
 
+		// Persistence only applies to auto storm watch tasks
+		const persistenceValue = persistence && autoStormWatchValue ? 1 : 0;
+
 		// Validate time format (HH:MM)
 		if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
@@ -479,6 +485,7 @@ app.post("/api/tasks", async (req, res) => {
 			stormWatchValue,
 			autoStormWatchValue,
 			activeSite.site_id,
+			persistenceValue,
 		);
 		const newTask = await db.getTaskById(result.id);
 
@@ -494,7 +501,16 @@ app.post("/api/tasks", async (req, res) => {
 // Update task
 app.put("/api/tasks/:id", async (req, res) => {
 	try {
-		const { name, time, mode, backup_reserve, enabled, storm_watch, auto_storm_watch } = req.body;
+		const {
+			name,
+			time,
+			mode,
+			backup_reserve,
+			enabled,
+			storm_watch,
+			auto_storm_watch,
+			persistence,
+		} = req.body;
 		const taskId = parseInt(req.params.id);
 
 		// Validation
@@ -527,6 +543,9 @@ app.put("/api/tasks/:id", async (req, res) => {
 			});
 		}
 
+		// Persistence only applies to auto storm watch tasks
+		const persistenceValue = persistence && autoStormWatchValue ? 1 : 0;
+
 		if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
 		}
@@ -547,6 +566,7 @@ app.put("/api/tasks/:id", async (req, res) => {
 			stormWatchValue,
 			autoStormWatchValue,
 			existingTask.site_id, // Preserve original site_id
+			persistenceValue,
 		);
 		const updatedTask = await db.getTaskById(taskId);
 
@@ -677,6 +697,48 @@ app.get("/api/powerwall/status", async (req, res) => {
 		});
 	} catch (error) {
 		console.error("Powerwall status error:", error);
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// Enable or disable Storm Watch on the active site
+app.post("/api/powerwall/storm-watch", async (req, res) => {
+	try {
+		const { enabled } = req.body;
+
+		if (typeof enabled !== "boolean") {
+			return res.status(400).json({ error: "enabled must be true or false" });
+		}
+
+		const authData = await db.getAuthToken();
+		const config = await db.getPowerwallConfig();
+
+		if (!authData || !authData.access_token) {
+			return res.status(401).json({ error: "Not authenticated" });
+		}
+
+		if (!config || !config.site_id) {
+			return res.status(400).json({ error: "Powerwall site not configured" });
+		}
+
+		// Check if token is expired
+		if (Date.now() >= authData.expires_at) {
+			return res.status(401).json({
+				error: "Token expired. Automatic refresh in progress. Please try again in a moment.",
+			});
+		}
+
+		const teslaAPI = new TeslaAPI();
+
+		if (enabled) {
+			await teslaAPI.enableStormWatch(authData.access_token, config.site_id);
+		} else {
+			await teslaAPI.disableStormWatch(authData.access_token, config.site_id);
+		}
+
+		res.json({ success: true, enabled });
+	} catch (error) {
+		console.error("Storm watch toggle error:", error);
 		res.status(500).json({ error: error.message });
 	}
 });

@@ -6,6 +6,7 @@ import SiteSwitcher from "./components/SiteSwitcher";
 import TaskList from "./components/TaskList";
 import TaskModal from "./components/TaskModal";
 import PowerwallStatus from "./components/PowerwallStatus";
+import StormWatchBadge from "./components/StormWatchBadge";
 import ExecutionLogs from "./components/ExecutionLogs";
 import TokenStatus from "./components/TokenStatus";
 import * as api from "./services/api";
@@ -21,6 +22,7 @@ function App() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [activeTab, setActiveTab] = useState("tasks");
+	const [activeSiteId, setActiveSiteId] = useState(null);
 
 	useEffect(() => {
 		loadInitialData();
@@ -134,6 +136,7 @@ function App() {
 
 	const handleSiteChange = async (siteId) => {
 		console.log("Site switched to:", siteId);
+		setActiveSiteId(siteId);
 
 		// Reload tasks for the new active site
 		try {
@@ -196,6 +199,7 @@ function App() {
 					<div className="header-right">
 						<div className="status-indicators">
 							{isAuthenticated && <SiteSwitcher onSiteChange={handleSiteChange} />}
+							{isAuthenticated && isConfigured && <StormWatchBadge key={activeSiteId} />}
 							<div
 								className={`status-badge ${isAuthenticated ? "status-success" : "status-error"}`}
 							>

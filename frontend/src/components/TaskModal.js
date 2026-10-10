@@ -7,6 +7,7 @@ function TaskModal({ task, onSave, onClose }) {
 	const [backupReserve, setBackupReserve] = useState(20);
 	const [stormWatch, setStormWatch] = useState("no_change");
 	const [autoStormWatch, setAutoStormWatch] = useState(false);
+	const [persistence, setPersistence] = useState(false);
 	const [enabled, setEnabled] = useState(true);
 
 	useEffect(() => {
@@ -17,6 +18,7 @@ function TaskModal({ task, onSave, onClose }) {
 			setBackupReserve(task.backup_reserve);
 			setStormWatch(task.storm_watch || "no_change");
 			setAutoStormWatch(!!task.auto_storm_watch);
+			setPersistence(!!task.persistence);
 			setEnabled(!!task.enabled);
 		}
 	}, [task]);
@@ -36,6 +38,7 @@ function TaskModal({ task, onSave, onClose }) {
 			backup_reserve: parseInt(backupReserve),
 			storm_watch: stormWatch,
 			auto_storm_watch: autoStormWatch,
+			persistence: autoStormWatch && persistence,
 			enabled: enabled ? 1 : 0,
 		});
 	};
@@ -117,6 +120,7 @@ function TaskModal({ task, onSave, onClose }) {
 									// Disable auto storm watch if storm watch is not enabled
 									if (e.target.value !== "enable") {
 										setAutoStormWatch(false);
+										setPersistence(false);
 									}
 								}}
 							>
@@ -133,7 +137,13 @@ function TaskModal({ task, onSave, onClose }) {
 									<input
 										type="checkbox"
 										checked={autoStormWatch}
-										onChange={(e) => setAutoStormWatch(e.target.checked)}
+										onChange={(e) => {
+											setAutoStormWatch(e.target.checked);
+											// Persistence only applies to auto storm watch
+											if (!e.target.checked) {
+												setPersistence(false);
+											}
+										}}
 									/>
 									<span>🌩️ Auto Storm Watch (Activate only if severe weather detected)</span>
 								</label>
@@ -141,6 +151,25 @@ function TaskModal({ task, onSave, onClose }) {
 									When enabled, this task will check weather.gov for active severe weather alerts
 									(hurricanes, blizzards, tornadoes, etc.) and only activate Storm Watch if a real
 									threat is detected. Requires Google Maps API key configured on server.
+								</small>
+							</div>
+						)}
+
+						{stormWatch === "enable" && autoStormWatch && (
+							<div className="form-group">
+								<label className="checkbox-label">
+									<input
+										type="checkbox"
+										checked={persistence}
+										onChange={(e) => setPersistence(e.target.checked)}
+									/>
+									<span>🔁 Persistence (Keep trying until Storm Watch is charging)</span>
+								</label>
+								<small>
+									After this task runs, checks every 10 minutes that Storm Watch is enabled and
+									charging the batteries from an active storm event. If it is not, a new weather
+									event is found and the site address is updated again, repeating until charging
+									begins. Each attempt is recorded in the Execution Logs.
 								</small>
 							</div>
 						)}
@@ -177,6 +206,10 @@ function TaskModal({ task, onSave, onClose }) {
 								<li>
 									<strong>Auto Storm Watch:</strong> Intelligently activates Storm Watch only when
 									severe weather alerts are detected in your area, preventing false activations.
+								</li>
+								<li>
+									<strong>Persistence:</strong> Re-checks every 10 minutes after an Auto Storm Watch
+									run and moves to a new weather event until the batteries are charging.
 								</li>
 							</ul>
 						</div>

@@ -13,6 +13,14 @@ class TaskScheduler {
 
 		// Retry failed tasks every 10 minutes
 		this.RETRY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
+
+		// Persistence: after an auto storm watch run, verify every 10 minutes that
+		// Storm Watch is actually charging the batteries, moving to a new weather
+		// event if it is not
+		this.persistenceChecks = new Map();
+		this.PERSISTENCE_INTERVAL_MS = 10 * 60 * 1000;
+		this.CHARGING_THRESHOLD_W = 100; // battery_power below -100W counts as charging
+		this.FULL_BATTERY_PERCENT = 99; // nothing left to charge at or above this level
 	}
 
 	async initialize() {
@@ -43,6 +51,7 @@ class TaskScheduler {
 
 		// Clear any existing retry timer
 		this.clearRetryTimer(task.id);
+		this.clearPersistence(task.id);
 
 		// Parse time (format: "HH:MM")
 		const [hours, minutes] = task.time.split(":");
@@ -70,6 +79,178 @@ class TaskScheduler {
 
 		// Also clear any retry timer
 		this.clearRetryTimer(taskId);
+		this.clearPersistence(taskId);
+	}
+
+	clearPersistence(taskId) {
+		if (this.persistenceChecks.has(taskId)) {
+			clearTimeout(this.persistenceChecks.get(taskId).timer);
+			this.persistenceChecks.delete(taskId);
+		}
+	}
+
+	formatAddress(address) {
+		return `${address.address_line1}, ${address.city}, ${address.state} ${address.zip}`;
+	}
+
+	startPersistence(task, address, alertId) {
+		this.clearPersistence(task.id);
+
+		const state = {
+			attempt: 0,
+			address: address,
+			triedAlertIds: alertId ? [alertId] : [],
+			timer: null,
+		};
+
+		this.persistenceChecks.set(task.id, state);
+		this.schedulePersistenceCheck(task.id, state);
+	}
+
+	schedulePersistenceCheck(taskId, state) {
+		state.timer = setTimeout(
+			() => this.runPersistenceCheck(taskId, state),
+			this.PERSISTENCE_INTERVAL_MS,
+		);
+
+		const checkTime = new Date(Date.now() + this.PERSISTENCE_INTERVAL_MS);
+		console.log(`⏳ Task ${taskId} persistence check at ${checkTime.toLocaleTimeString()}`);
+	}
+
+	async runPersistenceCheck(taskId, state) {
+		// Persistence was cancelled or restarted while this check was pending
+		const isCurrent = () => this.persistenceChecks.get(taskId) === state;
+		if (!isCurrent()) return;
+
+		let finished = false;
+
+		try {
+			// Reload the task in case it was changed since the run that started this
+			const task = await this.db.getTaskById(taskId);
+
+			if (
+				!task ||
+				!task.enabled ||
+				!task.persistence ||
+				!task.auto_storm_watch ||
+				task.storm_watch !== "enable"
+			) {
+				console.log(`⏹️  Task ${taskId} persistence stopped - no longer enabled for this task`);
+				finished = true;
+				return;
+			}
+
+			console.log(`🔎 Persistence check for task ${task.id}: "${task.name}"`);
+
+			const authData = await this.db.getAuthToken();
+
+			if (!authData || !authData.access_token) {
+				throw new Error("No authentication token available");
+			}
+
+			if (Date.now() >= authData.expires_at) {
+				throw new Error("Authentication token expired - automatic refresh should handle this");
+			}
+
+			const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+			if (!googleMapsApiKey) {
+				throw new Error("Google Maps API key not configured");
+			}
+
+			const siteInfo = await this.teslaAPI.getSiteInfo(authData.access_token, task.site_id);
+			const liveStatus = await this.teslaAPI.getLiveStatus(authData.access_token, task.site_id);
+
+			if (!liveStatus) {
+				throw new Error("Live status not available");
+			}
+
+			const stormWatchEnabled = !!siteInfo.user_settings?.storm_mode_enabled;
+			const stormActive = !!liveStatus.storm_mode_active;
+			const batteryPower = liveStatus.battery_power || 0; // negative = charging
+			const batteryPercent = liveStatus.percentage_charged || 0;
+			const charging = batteryPower < -this.CHARGING_THRESHOLD_W;
+			const batteryFull = batteryPercent >= this.FULL_BATTERY_PERCENT;
+
+			const stateSummary =
+				`Storm Watch ${stormWatchEnabled ? "enabled" : "disabled"}, ` +
+				`storm event ${stormActive ? "active" : "not active"}, ` +
+				`battery ${charging ? "charging" : "not charging"} ` +
+				`(${(batteryPower / 1000).toFixed(2)} kW, ${batteryPercent.toFixed(0)}%)`;
+			const currentAddress = state.address ? this.formatAddress(state.address) : "unchanged";
+
+			if (stormWatchEnabled && stormActive && (charging || batteryFull)) {
+				const message = `Persistence confirmed: ${stateSummary}. Address: ${currentAddress}`;
+				console.log(`  ✅ ${message}`);
+				await this.db.logTaskExecution(task.id, "success", message);
+				finished = true;
+				return;
+			}
+
+			state.attempt++;
+			console.log(`  ⚠️  Persistence attempt ${state.attempt}: ${stateSummary}`);
+
+			if (!stormWatchEnabled) {
+				console.log(`  ⛈️  Storm Watch is disabled - enabling`);
+				await this.teslaAPI.enableStormWatch(authData.access_token, task.site_id);
+			}
+
+			let weatherResult = await this.weatherAlertService.checkForSevereWeatherAndGetAddress(
+				googleMapsApiKey,
+				state.triedAlertIds,
+			);
+
+			// Every active alert has been tried - start over from the full list
+			if (!weatherResult.success && weatherResult.exhausted) {
+				state.triedAlertIds = [];
+				weatherResult =
+					await this.weatherAlertService.checkForSevereWeatherAndGetAddress(googleMapsApiKey);
+			}
+
+			// Task was edited, disabled or re-run while we were searching
+			if (!isCurrent()) return;
+
+			if (!weatherResult.success) {
+				await this.db.logTaskExecution(
+					task.id,
+					"persistence",
+					`Persistence attempt ${state.attempt}: ${stateSummary}. ` +
+						`No severe weather alerts active - address left at ${currentAddress}`,
+				);
+				return;
+			}
+
+			await this.teslaAPI.updateSiteAddress(
+				authData.access_token,
+				task.site_id,
+				weatherResult.address,
+			);
+
+			state.address = weatherResult.address;
+			if (weatherResult.alert.id) {
+				state.triedAlertIds.push(weatherResult.alert.id);
+			}
+
+			await this.db.logTaskExecution(
+				task.id,
+				"persistence",
+				`Persistence attempt ${state.attempt}: ${stateSummary}. ` +
+					`Address set to ${this.formatAddress(weatherResult.address)} (${weatherResult.alert.event})`,
+			);
+		} catch (error) {
+			console.error(`❌ Task ${taskId} persistence check failed:`, error.message);
+			await this.db
+				.logTaskExecution(taskId, "failed", `Persistence check failed: ${error.message}`)
+				.catch((logError) => console.error("Failed to log persistence check:", logError.message));
+		} finally {
+			if (isCurrent()) {
+				if (finished) {
+					this.persistenceChecks.delete(taskId);
+				} else {
+					this.schedulePersistenceCheck(taskId, state);
+				}
+			}
+		}
 	}
 
 	clearRetryTimer(taskId) {
@@ -117,6 +298,14 @@ class TaskScheduler {
 	async executeTask(task) {
 		console.log(`Executing task ${task.id}: "${task.name}"`);
 
+		// A fresh run restarts any persistence checks left over from the last one
+		this.clearPersistence(task.id);
+
+		let stormAddress = null;
+		let stormAlertId = null;
+		let autoStormDetail = null;
+		let canPersist = false;
+
 		try {
 			// Get auth token
 			const authData = await this.db.getAuthToken();
@@ -144,7 +333,10 @@ class TaskScheduler {
 
 					if (!googleMapsApiKey) {
 						console.warn("  ⚠️  Google Maps API key not configured, skipping auto storm watch");
+						autoStormDetail = "Auto Storm Watch skipped: Google Maps API key not configured";
 					} else {
+						canPersist = true;
+
 						const weatherResult =
 							await this.weatherAlertService.checkForSevereWeatherAndGetAddress(googleMapsApiKey);
 
@@ -159,12 +351,20 @@ class TaskScheduler {
 							);
 
 							console.log(`  ✅ Site address updated - Tesla should activate Storm Watch`);
+
+							stormAddress = weatherResult.address;
+							stormAlertId = weatherResult.alert.id;
+							autoStormDetail =
+								`Auto Storm Watch: address set to ${this.formatAddress(stormAddress)} ` +
+								`(${weatherResult.alert.event})`;
 						} else {
 							console.log(`  ℹ️  No severe weather alerts active, skipping address update`);
+							autoStormDetail = "Auto Storm Watch: no severe weather alerts active, address unchanged";
 						}
 					}
 				} catch (weatherError) {
 					console.error(`  ❌ Auto storm watch failed: ${weatherError.message}`);
+					autoStormDetail = `Auto Storm Watch failed: ${weatherError.message}`;
 					// Continue with task execution even if weather check fails
 				}
 			}
@@ -189,11 +389,16 @@ class TaskScheduler {
 			}
 
 			// Log success
-			await this.db.logTaskExecution(task.id, "success");
+			await this.db.logTaskExecution(task.id, "success", autoStormDetail);
 			console.log(`✅ Task ${task.id} executed successfully`);
 
 			// Clear any retry timer on success
 			this.clearRetryTimer(task.id);
+
+			// Keep checking that Storm Watch is actually charging the batteries
+			if (task.persistence && canPersist) {
+				this.startPersistence(task, stormAddress, stormAlertId);
+			}
 		} catch (error) {
 			console.error(`❌ Task ${task.id} failed:`, error.message);
 			await this.db.logTaskExecution(task.id, "failed", error.message);
@@ -216,6 +421,12 @@ class TaskScheduler {
 		}
 		this.retryTimers.clear();
 
+		// Clear all persistence checks
+		for (const [taskId, state] of this.persistenceChecks) {
+			clearTimeout(state.timer);
+		}
+		this.persistenceChecks.clear();
+
 		// Reload and reschedule tasks
 		await this.loadAndScheduleTasks();
 	}
@@ -233,6 +444,12 @@ class TaskScheduler {
 		}
 		this.retryTimers.clear();
 
+		// Clear all persistence checks
+		for (const [taskId, state] of this.persistenceChecks) {
+			clearTimeout(state.timer);
+		}
+		this.persistenceChecks.clear();
+
 		// Close database connection
 		await this.db.close();
 		console.log("Task scheduler shut down");
@@ -244,6 +461,10 @@ class TaskScheduler {
 			retryingTasks.push(taskId);
 		}
 		return retryingTasks;
+	}
+
+	getPersistenceStatus() {
+		return Array.from(this.persistenceChecks.keys());
 	}
 }
 
