@@ -49,13 +49,11 @@ function StormWatchBadge() {
 		return null;
 	}
 
-	let className = "status-neutral";
-	let label = "☀️ Storm Watch Off";
+	let className = "status-neutral storm-watch-off";
 	let title = "Storm Watch is disabled - click to enable";
 
 	if (status.enabled) {
 		className = status.active ? "status-warning" : "status-success";
-		label = status.active ? "⛈️ Storm Watch Active" : "⛈️ Storm Watch On";
 		title = status.active
 			? "Tesla has detected a storm event - click to disable Storm Watch"
 			: "Storm Watch is enabled - click to disable";
@@ -97,12 +95,13 @@ function StormWatchBadge() {
 				</div>
 			)}
 			<button
-				className={`status-badge status-badge-button ${className}`}
+				className={`status-badge status-badge-button status-badge-icon ${className}`}
 				onClick={handleToggle}
 				disabled={toggling}
 				title={title}
+				aria-label={title}
 			>
-				{toggling ? "⏳ Updating..." : label}
+				{toggling ? "⏳" : "⛈️"}
 			</button>
 		</>
 	);

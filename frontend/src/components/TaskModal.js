@@ -8,6 +8,7 @@ function TaskModal({ task, onSave, onClose }) {
 	const [stormWatch, setStormWatch] = useState("no_change");
 	const [autoStormWatch, setAutoStormWatch] = useState(false);
 	const [persistence, setPersistence] = useState(false);
+	const [persistenceInterval, setPersistenceInterval] = useState(10);
 	const [enabled, setEnabled] = useState(true);
 
 	useEffect(() => {
@@ -19,6 +20,7 @@ function TaskModal({ task, onSave, onClose }) {
 			setStormWatch(task.storm_watch || "no_change");
 			setAutoStormWatch(!!task.auto_storm_watch);
 			setPersistence(!!task.persistence);
+			setPersistenceInterval(task.persistence_interval || 10);
 			setEnabled(!!task.enabled);
 		}
 	}, [task]);
@@ -31,6 +33,14 @@ function TaskModal({ task, onSave, onClose }) {
 			return;
 		}
 
+		const parsedInterval = parseInt(persistenceInterval);
+		const intervalValid = parsedInterval >= 1 && parsedInterval <= 1440;
+		if (autoStormWatch && persistence && !intervalValid) {
+			alert("Persistence check interval must be between 1 and 1440 minutes");
+			return;
+		}
+		const interval = intervalValid ? parsedInterval : 10;
+
 		onSave({
 			name,
 			time,
@@ -39,6 +49,7 @@ function TaskModal({ task, onSave, onClose }) {
 			storm_watch: stormWatch,
 			auto_storm_watch: autoStormWatch,
 			persistence: autoStormWatch && persistence,
+			persistence_interval: interval,
 			enabled: enabled ? 1 : 0,
 		});
 	};
@@ -166,11 +177,28 @@ function TaskModal({ task, onSave, onClose }) {
 									<span>🔁 Persistence (Keep trying until Storm Watch is charging)</span>
 								</label>
 								<small>
-									After this task runs, checks every 10 minutes that Storm Watch is enabled and
-									charging the batteries from an active storm event. If it is not, a new weather
-									event is found and the site address is updated again, repeating until charging
-									begins. Each attempt is recorded in the Execution Logs.
+									After this task runs, checks at the interval below that Storm Watch is enabled
+									and charging the batteries from an active storm event. If it is not, a new
+									weather event is found and the site address is updated again, repeating until
+									charging begins. Each attempt is recorded in the Execution Logs.
 								</small>
+							</div>
+						)}
+
+						{stormWatch === "enable" && autoStormWatch && persistence && (
+							<div className="form-group">
+								<label htmlFor="persistence_interval">Persistence Check Interval (minutes)</label>
+								<input
+									type="number"
+									id="persistence_interval"
+									min="1"
+									max="1440"
+									step="1"
+									value={persistenceInterval}
+									onChange={(e) => setPersistenceInterval(e.target.value)}
+									required
+								/>
+								<small>How long to wait between persistence checks (1–1440 minutes)</small>
 							</div>
 						)}
 
@@ -208,7 +236,7 @@ function TaskModal({ task, onSave, onClose }) {
 									severe weather alerts are detected in your area, preventing false activations.
 								</li>
 								<li>
-									<strong>Persistence:</strong> Re-checks every 10 minutes after an Auto Storm Watch
+									<strong>Persistence:</strong> Re-checks at a set interval after an Auto Storm Watch
 									run and moves to a new weather event until the batteries are charging.
 								</li>
 							</ul>

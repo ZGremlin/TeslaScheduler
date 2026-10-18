@@ -1,6 +1,6 @@
 import React from "react";
 
-function TaskList({ tasks, onEdit, onDelete, onToggle, onExecute }) {
+function TaskList({ tasks, onEdit, onDelete, onToggle, onTogglePersistence, onExecute }) {
 	if (tasks.length === 0) {
 		return (
 			<div className="empty-state">
@@ -70,6 +70,19 @@ function TaskList({ tasks, onEdit, onDelete, onToggle, onExecute }) {
 							>
 								{task.enabled ? "⏸️" : "▶️"}
 							</button>
+							{!!task.auto_storm_watch && task.storm_watch === "enable" && (
+								<button
+									className={`btn-icon ${task.persistence ? "" : "btn-icon-off"}`}
+									onClick={() => onTogglePersistence(task.id)}
+									title={
+										task.persistence
+											? `Persistence is on (every ${task.persistence_interval || 10} min) - click to turn off`
+											: "Persistence is off - click to turn on"
+									}
+								>
+									🔁
+								</button>
+							)}
 							<button className="btn-icon" onClick={() => onEdit(task)} title="Edit">
 								✏️
 							</button>

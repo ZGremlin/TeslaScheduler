@@ -18,7 +18,7 @@ class TaskScheduler {
 		// Storm Watch is actually charging the batteries, moving to a new weather
 		// event if it is not
 		this.persistenceChecks = new Map();
-		this.PERSISTENCE_INTERVAL_MS = 10 * 60 * 1000;
+		this.DEFAULT_PERSISTENCE_INTERVAL_MINUTES = 10;
 		this.CHARGING_THRESHOLD_W = 100; // battery_power below -100W counts as charging
 		this.FULL_BATTERY_PERCENT = 99; // nothing left to charge at or above this level
 	}
@@ -100,6 +100,7 @@ class TaskScheduler {
 			attempt: 0,
 			address: address,
 			triedAlertIds: alertId ? [alertId] : [],
+			intervalMs: this.getPersistenceIntervalMs(task),
 			timer: null,
 		};
 
@@ -107,13 +108,19 @@ class TaskScheduler {
 		this.schedulePersistenceCheck(task.id, state);
 	}
 
-	schedulePersistenceCheck(taskId, state) {
-		state.timer = setTimeout(
-			() => this.runPersistenceCheck(taskId, state),
-			this.PERSISTENCE_INTERVAL_MS,
-		);
+	getPersistenceIntervalMs(task) {
+		const minutes = Number(task.persistence_interval);
+		const validMinutes =
+			Number.isInteger(minutes) && minutes >= 1
+				? minutes
+				: this.DEFAULT_PERSISTENCE_INTERVAL_MINUTES;
+		return validMinutes * 60 * 1000;
+	}
 
-		const checkTime = new Date(Date.now() + this.PERSISTENCE_INTERVAL_MS);
+	schedulePersistenceCheck(taskId, state) {
+		state.timer = setTimeout(() => this.runPersistenceCheck(taskId, state), state.intervalMs);
+
+		const checkTime = new Date(Date.now() + state.intervalMs);
 		console.log(`⏳ Task ${taskId} persistence check at ${checkTime.toLocaleTimeString()}`);
 	}
 
@@ -139,6 +146,8 @@ class TaskScheduler {
 				finished = true;
 				return;
 			}
+
+			state.intervalMs = this.getPersistenceIntervalMs(task);
 
 			console.log(`🔎 Persistence check for task ${task.id}: "${task.name}"`);
 

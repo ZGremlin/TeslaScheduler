@@ -28,6 +28,7 @@ db.serialize(() => {
       storm_watch TEXT CHECK(storm_watch IN ('enable', 'disable', 'no_change')),
       auto_storm_watch INTEGER DEFAULT 0,
       persistence INTEGER DEFAULT 0,
+      persistence_interval INTEGER DEFAULT 10,
       enabled INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

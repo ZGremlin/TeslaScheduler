@@ -205,12 +205,23 @@ class DatabaseService {
 		autoStormWatch = 0,
 		siteId,
 		persistence = 0,
+		persistenceInterval = 10,
 	) {
 		return new Promise((resolve, reject) => {
 			this.db.run(
-				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, storm_watch, auto_storm_watch, persistence, site_id, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-				[name, time, mode, backupReserve, stormWatch, autoStormWatch, persistence, siteId],
+				`INSERT INTO scheduled_tasks (name, time, mode, backup_reserve, storm_watch, auto_storm_watch, persistence, persistence_interval, site_id, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+				[
+					name,
+					time,
+					mode,
+					backupReserve,
+					stormWatch,
+					autoStormWatch,
+					persistence,
+					persistenceInterval,
+					siteId,
+				],
 				function (err) {
 					if (err) reject(err);
 					else resolve({ id: this.lastID });
@@ -261,11 +272,12 @@ class DatabaseService {
 		autoStormWatch = 0,
 		siteId,
 		persistence = 0,
+		persistenceInterval = 10,
 	) {
 		return new Promise((resolve, reject) => {
 			this.db.run(
 				`UPDATE scheduled_tasks
-         SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, storm_watch = ?, auto_storm_watch = ?, persistence = ?, site_id = ?, updated_at = CURRENT_TIMESTAMP
+         SET name = ?, time = ?, mode = ?, backup_reserve = ?, enabled = ?, storm_watch = ?, auto_storm_watch = ?, persistence = ?, persistence_interval = ?, site_id = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
 				[
 					name,
@@ -276,6 +288,7 @@ class DatabaseService {
 					stormWatch,
 					autoStormWatch,
 					persistence,
+					persistenceInterval,
 					siteId,
 					id,
 				],
@@ -293,6 +306,22 @@ class DatabaseService {
 				if (err) reject(err);
 				else resolve({ changes: this.changes });
 			});
+		});
+	}
+
+	async toggleTaskPersistence(id) {
+		return new Promise((resolve, reject) => {
+			this.db.run(
+				`UPDATE scheduled_tasks
+         SET persistence = CASE WHEN persistence = 1 THEN 0 ELSE 1 END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+				[id],
+				function (err) {
+					if (err) reject(err);
+					else resolve({ changes: this.changes });
+				},
+			);
 		});
 	}
 

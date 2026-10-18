@@ -60,6 +60,7 @@ export const createTask = (task) => api.post("/tasks", task);
 export const updateTask = (id, task) => api.put(`/tasks/${id}`, task);
 export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 export const toggleTask = (id) => api.patch(`/tasks/${id}/toggle`);
+export const toggleTaskPersistence = (id) => api.patch(`/tasks/${id}/persistence`);
 export const executeTask = (id) => api.post(`/tasks/${id}/execute`);
 
 // Logs

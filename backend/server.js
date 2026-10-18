@@ -524,8 +524,16 @@ app.get("/api/tasks/:id", async (req, res) => {
 // Create new task
 app.post("/api/tasks", async (req, res) => {
 	try {
-		const { name, time, mode, backup_reserve, storm_watch, auto_storm_watch, persistence } =
-			req.body;
+		const {
+			name,
+			time,
+			mode,
+			backup_reserve,
+			storm_watch,
+			auto_storm_watch,
+			persistence,
+			persistence_interval,
+		} = req.body;
 
 		// Validation
 		if (!name || !time || !mode || backup_reserve === undefined) {
@@ -560,6 +568,21 @@ app.post("/api/tasks", async (req, res) => {
 		// Persistence only applies to auto storm watch tasks
 		const persistenceValue = persistence && autoStormWatchValue ? 1 : 0;
 
+		// Minutes between persistence checks
+		const persistenceIntervalValue =
+			persistence_interval === undefined || persistence_interval === null
+				? 10
+				: Number(persistence_interval);
+		if (
+			!Number.isInteger(persistenceIntervalValue) ||
+			persistenceIntervalValue < 1 ||
+			persistenceIntervalValue > 1440
+		) {
+			return res
+				.status(400)
+				.json({ error: "Persistence interval must be a whole number of minutes from 1 to 1440" });
+		}
+
 		// Validate time format (HH:MM)
 		if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
@@ -582,6 +605,7 @@ app.post("/api/tasks", async (req, res) => {
 			autoStormWatchValue,
 			activeSite.site_id,
 			persistenceValue,
+			persistenceIntervalValue,
 		);
 		const newTask = await db.getTaskById(result.id);
 
@@ -606,6 +630,7 @@ app.put("/api/tasks/:id", async (req, res) => {
 			storm_watch,
 			auto_storm_watch,
 			persistence,
+			persistence_interval,
 		} = req.body;
 		const taskId = parseInt(req.params.id);
 
@@ -642,6 +667,21 @@ app.put("/api/tasks/:id", async (req, res) => {
 		// Persistence only applies to auto storm watch tasks
 		const persistenceValue = persistence && autoStormWatchValue ? 1 : 0;
 
+		// Minutes between persistence checks
+		const persistenceIntervalValue =
+			persistence_interval === undefined || persistence_interval === null
+				? 10
+				: Number(persistence_interval);
+		if (
+			!Number.isInteger(persistenceIntervalValue) ||
+			persistenceIntervalValue < 1 ||
+			persistenceIntervalValue > 1440
+		) {
+			return res
+				.status(400)
+				.json({ error: "Persistence interval must be a whole number of minutes from 1 to 1440" });
+		}
+
 		if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
 			return res.status(400).json({ error: "Invalid time format. Use HH:MM" });
 		}
@@ -663,6 +703,7 @@ app.put("/api/tasks/:id", async (req, res) => {
 			autoStormWatchValue,
 			existingTask.site_id, // Preserve original site_id
 			persistenceValue,
+			persistenceIntervalValue,
 		);
 		const updatedTask = await db.getTaskById(taskId);
 
@@ -691,6 +732,36 @@ app.patch("/api/tasks/:id/toggle", async (req, res) => {
 			taskScheduler.scheduleTask(task);
 		} else {
 			taskScheduler.unscheduleTask(taskId);
+		}
+
+		res.json(task);
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// Toggle task persistence
+app.patch("/api/tasks/:id/persistence", async (req, res) => {
+	try {
+		const taskId = parseInt(req.params.id);
+		const existingTask = await db.getTaskById(taskId);
+		if (!existingTask) {
+			return res.status(404).json({ error: "Task not found" });
+		}
+
+		// Persistence only applies to auto storm watch tasks
+		if (!existingTask.persistence && !existingTask.auto_storm_watch) {
+			return res.status(400).json({
+				error: "Persistence can only be enabled on Auto Storm Watch tasks",
+			});
+		}
+
+		await db.toggleTaskPersistence(taskId);
+		const task = await db.getTaskById(taskId);
+
+		// Stop any in-progress persistence checks when turned off
+		if (!task.persistence) {
+			taskScheduler.clearPersistence(taskId);
 		}
 
 		res.json(task);

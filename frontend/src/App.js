@@ -136,6 +136,16 @@ function App() {
 		}
 	};
 
+	const handleTogglePersistence = async (taskId) => {
+		try {
+			await api.toggleTaskPersistence(taskId);
+			const tasksRes = await api.getTasks();
+			setTasks(tasksRes.data);
+		} catch (err) {
+			alert("Failed to toggle persistence: " + (err.response?.data?.error || err.message));
+		}
+	};
+
 	const handleExecuteTask = async (taskId) => {
 		if (!window.confirm("Execute this task now?")) {
 			return;
@@ -288,6 +298,7 @@ function App() {
 							onEdit={handleEditTask}
 							onDelete={handleDeleteTask}
 							onToggle={handleToggleTask}
+							onTogglePersistence={handleTogglePersistence}
 							onExecute={handleExecuteTask}
 						/>
 					</div>
