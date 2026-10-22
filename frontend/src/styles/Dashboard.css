@@ -133,6 +133,98 @@
   border-color: var(--primary);
 }
 
+/* Polling settings (in the customize bar) */
+.polling-settings {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.polling-settings .widget-subheading {
+  margin-top: 0;
+}
+
+.polling-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem 1.25rem;
+}
+
+.polling-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.polling-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.polling-input {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.polling-input input {
+  width: 5.5rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.polling-input input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.polling-input input:disabled {
+  opacity: 0.5;
+}
+
+.polling-field.invalid .polling-input input {
+  border-color: var(--error);
+}
+
+.polling-help {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.polling-field.invalid .polling-help {
+  color: var(--error);
+}
+
+.polling-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-top: 1rem;
+}
+
+.polling-estimate {
+  flex: 1;
+  min-width: 220px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.polling-estimate strong {
+  color: var(--text-primary);
+}
+
+.polling-status {
+  font-size: 0.85rem;
+}
+
 /* Today So Far */
 .today-hero {
   display: grid;

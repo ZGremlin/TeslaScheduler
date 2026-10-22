@@ -4,6 +4,7 @@ import { LineChart, ColumnChart, Gauge, Sparkline } from "./dashboard/Charts";
 import UpcomingTasks from "./dashboard/UpcomingTasks";
 import RecentLogs from "./dashboard/RecentLogs";
 import WidgetGrid from "./dashboard/WidgetGrid";
+import PollingSettings from "./dashboard/PollingSettings";
 import { useDashboardLayout } from "./dashboard/useDashboardLayout";
 
 // Validated categorical slots (see --series-* in App.css); each entity keeps its color everywhere
@@ -1087,6 +1088,7 @@ function Dashboard({ tasks, onNavigate }) {
 							Reset to default layout
 						</button>
 					</div>
+					<PollingSettings onSaved={load} />
 				</div>
 			)}
 

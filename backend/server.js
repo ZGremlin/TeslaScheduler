@@ -9,7 +9,7 @@ const TaskScheduler = require("./taskScheduler");
 const TokenRefreshManager = require("./tokenRefreshManager");
 const MetricsDatabase = require("./metricsDatabase");
 const MetricsCollector = require("./metricsCollector");
-const { startOfToday } = require("./metricsCollector");
+const { startOfToday, POLLING_LIMITS } = require("./metricsCollector");
 const authLogger = require("./authLogger");
 
 const app = express();
@@ -36,7 +36,7 @@ let tokenRefreshManager = null;
 		// Initialize token refresh manager
 		tokenRefreshManager = await new TokenRefreshManager().initialize();
 
-		metricsCollector.start();
+		await metricsCollector.start();
 
 		console.log("Services initialized successfully");
 	} catch (error) {
@@ -921,7 +921,7 @@ app.post("/api/powerwall/storm-watch", async (req, res) => {
 // ============= DASHBOARD ROUTES =============
 
 // Everything the dashboard shows for the active site, read from the metrics database.
-// The latest reading is refreshed from Tesla first if it is more than a minute old.
+// The latest reading is refreshed from Tesla first if it is older than the view refresh setting.
 app.get("/api/dashboard", async (req, res) => {
 	try {
 		const config = await db.getPowerwallConfig();
@@ -934,7 +934,7 @@ app.get("/api/dashboard", async (req, res) => {
 		const hours = Math.min(Math.max(parseInt(req.query.hours) || 24, 1), 24 * 30);
 		const days = Math.min(Math.max(parseInt(req.query.days) || 14, 1), 90);
 
-		await metricsCollector.refreshIfStale(siteId, 60 * 1000);
+		await metricsCollector.refreshForView(siteId);
 
 		// Aim for ~150 points per chart, but never finer than the poll interval
 		const rangeMs = hours * 60 * 60 * 1000;
@@ -1021,7 +1021,7 @@ app.get("/api/dashboard", async (req, res) => {
 });
 
 // Energy since midnight (site time). Tesla's daily total is the most accurate source, but it
-// only syncs every 30 minutes, so readings recorded since that sync are added on top. Without a
+// only syncs every 60 minutes, so readings recorded since that sync are added on top. Without a
 // Tesla total for today, it falls back to readings alone.
 async function getTodayEnergy(siteId, timeZone) {
 	const { date, midnightMs } = startOfToday(timeZone);
@@ -1061,6 +1061,39 @@ async function getTodayEnergy(siteId, timeZone) {
 		hourly: readings.buckets,
 	};
 }
+
+// Background polling intervals (minutes), with the resulting Tesla call estimate
+async function pollingResponse(settings) {
+	const sites = await db.getAllSites();
+	const siteCount = Math.max(sites.length, 1);
+	return {
+		settings,
+		limits: POLLING_LIMITS,
+		site_count: siteCount,
+		weather_enabled: metricsCollector.weatherEnabled,
+		estimated_calls_per_day: MetricsCollector.estimateDailyCalls(settings) * siteCount,
+	};
+}
+
+app.get("/api/dashboard/polling", async (req, res) => {
+	try {
+		res.json(await pollingResponse(metricsCollector.getPolling()));
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+app.put("/api/dashboard/polling", async (req, res) => {
+	try {
+		const settings = Object.fromEntries(
+			Object.keys(POLLING_LIMITS).map((key) => [key, Number(req.body?.settings?.[key])]),
+		);
+		const saved = await metricsCollector.updatePolling(settings);
+		res.json(await pollingResponse(saved));
+	} catch (error) {
+		res.status(400).json({ error: error.message });
+	}
+});
 
 // Saved dashboard widget layout: { order: [id], hidden: [id], spans: { id: span } }
 app.get("/api/dashboard/layout", async (req, res) => {

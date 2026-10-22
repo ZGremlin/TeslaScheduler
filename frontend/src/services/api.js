@@ -76,6 +76,8 @@ export const getDashboard = (hours = 24, days = 14) =>
 	api.get(`/dashboard?hours=${hours}&days=${days}`);
 export const getDashboardLayout = () => api.get("/dashboard/layout");
 export const saveDashboardLayout = (layout) => api.put("/dashboard/layout", { layout });
+export const getPollingSettings = () => api.get("/dashboard/polling");
+export const savePollingSettings = (settings) => api.put("/dashboard/polling", { settings });
 
 // Powerwall Status
 export const getPowerwallStatus = () => api.get("/powerwall/status");

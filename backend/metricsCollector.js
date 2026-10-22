@@ -4,19 +4,48 @@ const TeslaAPI = require("./teslaAPI");
 // Periodically records Powerwall telemetry for every configured site into the
 // metrics database. Polling failures are logged but never push-notified, so a
 // flaky API or an expired token doesn't flood ntfy.
+// Polling intervals in minutes. Saved settings (Customize on the dashboard) override these;
+// METRICS_POLL_INTERVAL_MINUTES still sets the default for live readings.
+const POLLING_LIMITS = {
+	readings_minutes: { min: 1, max: 1440 },
+	energy_minutes: { min: 5, max: 1440 },
+	backup_minutes: { min: 15, max: 10080 },
+	weather_minutes: { min: 5, max: 1440 },
+	view_refresh_minutes: { min: 0, max: 1440 }, // 0 = never fetch on view
+};
+
+function defaultPolling() {
+	return {
+		readings_minutes: parseInt(process.env.METRICS_POLL_INTERVAL_MINUTES) || 30,
+		energy_minutes: 60,
+		backup_minutes: 360,
+		weather_minutes: 15,
+		view_refresh_minutes: 1,
+	};
+}
+
+// Check a polling settings object; returns an error message or null
+function validatePolling(settings) {
+	for (const [key, { min, max }] of Object.entries(POLLING_LIMITS)) {
+		const value = settings?.[key];
+		if (!Number.isInteger(value) || value < min || value > max) {
+			return `${key} must be a whole number of minutes from ${min} to ${max}`;
+		}
+	}
+	return null;
+}
+
 class MetricsCollector {
 	constructor(db, metricsDb) {
 		this.db = db;
 		this.metricsDb = metricsDb;
 		this.teslaAPI = new TeslaAPI();
 
-		const minutes = parseInt(process.env.METRICS_POLL_INTERVAL_MINUTES) || 5;
-		this.pollIntervalMs = Math.max(1, minutes) * 60 * 1000;
 		this.retentionDays = parseInt(process.env.METRICS_RETENTION_DAYS) || 90;
-
-		this.ENERGY_HISTORY_INTERVAL_MS = 30 * 60 * 1000;
-		this.BACKUP_HISTORY_INTERVAL_MS = 6 * 60 * 60 * 1000;
-		this.WEATHER_INTERVAL_MS = 15 * 60 * 1000;
+		this.TICK_MS = 60 * 1000;
+		this.PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+		this.lastPruneAt = 0;
+		this.applyPolling(defaultPolling());
 
 		// Optional outdoor conditions (Open-Meteo, no API key needed)
 		this.latitude = parseFloat(process.env.SITE_LATITUDE);
@@ -25,17 +54,33 @@ class MetricsCollector {
 		this.weather = null;
 
 		this.timer = null;
-		this.siteState = new Map(); // siteId -> { lastCollectedAt, lastEnergyAt, lastBackupAt, lastError }
+		this.siteState = new Map(); // siteId -> per-site timestamps and last error
 		this.inFlight = new Map(); // siteId -> Promise
 	}
 
-	start() {
-		this.collectAll();
-		this.timer = setInterval(() => this.collectAll(), this.pollIntervalMs);
-		console.log(
-			`Metrics collector started (every ${this.pollIntervalMs / 60000} min, ` +
-				`keeping ${this.retentionDays} days)`,
-		);
+	applyPolling(settings) {
+		this.polling = { ...settings };
+		this.pollIntervalMs = settings.readings_minutes * 60 * 1000;
+		this.energyIntervalMs = settings.energy_minutes * 60 * 1000;
+		this.backupIntervalMs = settings.backup_minutes * 60 * 1000;
+		this.weatherIntervalMs = settings.weather_minutes * 60 * 1000;
+		this.viewRefreshMs = settings.view_refresh_minutes * 60 * 1000;
+	}
+
+	async start() {
+		try {
+			const saved = await this.db.getSetting("polling");
+			if (saved && !validatePolling({ ...defaultPolling(), ...saved })) {
+				this.applyPolling({ ...defaultPolling(), ...saved });
+			}
+		} catch (error) {
+			console.warn(`Couldn't load saved polling settings: ${error.message}`);
+		}
+
+		// A short tick checks what is due, so interval changes apply without a restart
+		this.tick();
+		this.timer = setInterval(() => this.tick(), this.TICK_MS);
+		console.log(`Metrics collector started (${this.describePolling()}, keeping ${this.retentionDays} days)`);
 	}
 
 	stop() {
@@ -45,12 +90,46 @@ class MetricsCollector {
 		}
 	}
 
+	describePolling() {
+		const p = this.polling;
+		return (
+			`readings every ${p.readings_minutes} min, energy history every ${p.energy_minutes} min, ` +
+			`outages every ${p.backup_minutes} min`
+		);
+	}
+
+	getPolling() {
+		return { ...this.polling };
+	}
+
+	async updatePolling(settings) {
+		const error = validatePolling(settings);
+		if (error) throw new Error(error);
+		const next = Object.fromEntries(Object.keys(POLLING_LIMITS).map((key) => [key, settings[key]]));
+		await this.db.setSetting("polling", next);
+		this.applyPolling(next);
+		console.log(`Polling updated: ${this.describePolling()}`);
+		return this.getPolling();
+	}
+
+	// Tesla calls per day per site for given settings (dashboard views not included)
+	static estimateDailyCalls(settings) {
+		const perDay = (minutes) => Math.ceil(1440 / minutes);
+		return (
+			perDay(settings.readings_minutes) * 2 +
+			perDay(settings.energy_minutes) +
+			perDay(settings.backup_minutes)
+		);
+	}
+
 	getState(siteId) {
 		if (!this.siteState.has(siteId)) {
 			this.siteState.set(siteId, {
 				lastCollectedAt: null,
+				lastReadingAttemptAt: null,
 				lastEnergyAt: null,
 				lastBackupAt: null,
+				timeZone: null,
 				lastError: null,
 			});
 		}
@@ -65,31 +144,70 @@ class MetricsCollector {
 		return authData.access_token;
 	}
 
-	async collectAll() {
+	// Run whatever is due for each site. Due times count from the last attempt, so a
+	// failing call waits a full interval instead of retrying every tick.
+	async tick() {
+		if (this.ticking) return;
+		this.ticking = true;
+
 		try {
 			const token = await this.getValidToken();
 			if (!token) return;
 
+			const now = Date.now();
+			const due = (last, intervalMs) => !last || now - last >= intervalMs;
 			const sites = await this.db.getAllSites();
+
 			for (const site of sites) {
-				await this.collectSite(site.site_id).catch(() => {});
+				const siteId = site.site_id;
+				const state = this.getState(siteId);
+
+				if (due(state.lastReadingAttemptAt, this.pollIntervalMs)) {
+					await this.collectSite(siteId).catch(() => {});
+				}
+
+				if (due(state.lastEnergyAt, this.energyIntervalMs)) {
+					// Backfill the month on the first pass, then just keep the last week current
+					const period = state.lastEnergyAt ? "week" : "month";
+					state.lastEnergyAt = now;
+					await this.collectEnergyHistory(token, siteId, await this.getTimeZone(siteId), period);
+				}
+
+				if (due(state.lastBackupAt, this.backupIntervalMs)) {
+					state.lastBackupAt = now;
+					await this.collectBackupHistory(token, siteId, await this.getTimeZone(siteId));
+				}
 			}
 
-			const cutoff = Date.now() - this.retentionDays * 24 * 60 * 60 * 1000;
-			await this.metricsDb.pruneSnapshots(cutoff);
+			if (now - this.lastPruneAt >= this.PRUNE_INTERVAL_MS) {
+				this.lastPruneAt = now;
+				await this.metricsDb.pruneSnapshots(now - this.retentionDays * 24 * 60 * 60 * 1000);
+			}
 		} catch (error) {
 			console.error("Metrics collection failed:", error.message);
+		} finally {
+			this.ticking = false;
 		}
 	}
 
-	// Collect now unless the latest snapshot is newer than maxAgeMs
-	async refreshIfStale(siteId, maxAgeMs) {
+	async getTimeZone(siteId) {
+		const state = this.getState(siteId);
+		if (!state.timeZone) {
+			const details = await this.metricsDb.getSiteDetails(siteId);
+			state.timeZone = details?.installation_time_zone || null;
+		}
+		return state.timeZone;
+	}
+
+	// Fetch a reading while the dashboard is open, if the latest is older than the view refresh setting
+	async refreshForView(siteId) {
+		if (this.viewRefreshMs === 0) return;
 		const latest = await this.metricsDb.getLatestSnapshot(siteId);
-		if (latest && Date.now() - latest.recorded_at < maxAgeMs) return;
+		if (latest && Date.now() - latest.recorded_at < this.viewRefreshMs) return;
 		await this.collectSite(siteId).catch(() => {});
 	}
 
-	// Concurrent requests for the same site share one collection
+	// Concurrent requests for the same site share one reading
 	collectSite(siteId) {
 		if (!this.inFlight.has(siteId)) {
 			const run = this.doCollectSite(siteId).finally(() => this.inFlight.delete(siteId));
@@ -100,6 +218,7 @@ class MetricsCollector {
 
 	async doCollectSite(siteId) {
 		const state = this.getState(siteId);
+		state.lastReadingAttemptAt = Date.now();
 
 		try {
 			const token = await this.getValidToken();
@@ -139,21 +258,8 @@ class MetricsCollector {
 			});
 
 			state.lastCollectedAt = now;
+			state.timeZone = siteInfo.installation_time_zone || state.timeZone;
 			state.lastError = null;
-
-			const timeZone = siteInfo.installation_time_zone;
-
-			if (!state.lastEnergyAt || now - state.lastEnergyAt >= this.ENERGY_HISTORY_INTERVAL_MS) {
-				// Backfill the month on the first pass, then just keep the last week current
-				const period = state.lastEnergyAt ? "week" : "month";
-				await this.collectEnergyHistory(token, siteId, timeZone, period);
-				state.lastEnergyAt = now;
-			}
-
-			if (!state.lastBackupAt || now - state.lastBackupAt >= this.BACKUP_HISTORY_INTERVAL_MS) {
-				await this.collectBackupHistory(token, siteId, timeZone);
-				state.lastBackupAt = now;
-			}
 		} catch (error) {
 			state.lastError = error.message;
 			console.warn(`Metrics collection for site ${siteId} failed: ${error.message}`);
@@ -208,7 +314,7 @@ class MetricsCollector {
 
 	async getWeather() {
 		if (!this.weatherEnabled) return null;
-		if (this.weather && Date.now() - this.weather.fetchedAt < this.WEATHER_INTERVAL_MS) {
+		if (this.weather && Date.now() - this.weather.fetchedAt < this.weatherIntervalMs) {
 			return this.weather;
 		}
 
@@ -425,3 +531,4 @@ function addEnergyEntry(totals, e) {
 
 module.exports = MetricsCollector;
 module.exports.startOfToday = startOfToday;
+module.exports.POLLING_LIMITS = POLLING_LIMITS;

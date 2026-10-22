@@ -80,9 +80,14 @@ server creates automatically on startup (no init step needed). A background coll
 polls the Fleet API for every configured site and stores:
 
 - `power_snapshots` - Live readings (charge, power flow, grid/storm status, mode) every
-  `METRICS_POLL_INTERVAL_MINUTES` (default 5), pruned after `METRICS_RETENTION_DAYS` (default 90)
-- `daily_energy` - Daily energy totals from `calendar_history` (synced every 30 minutes)
+  `METRICS_POLL_INTERVAL_MINUTES` (default 30), pruned after `METRICS_RETENTION_DAYS` (default 90)
+- `daily_energy` - Daily energy totals from `calendar_history` (synced every 60 minutes)
 - `backup_events` - Grid outages from `calendar_history` (synced every 6 hours)
+
+These intervals, plus outdoor weather and how stale a reading can get before an open
+dashboard fetches a new one, can be changed under **Customize → Polling frequency** on the
+dashboard. Changes apply immediately (no restart) and are saved in `powerwall.db`; saved values
+override `METRICS_POLL_INTERVAL_MINUTES`.
 - `site_details` - Latest `site_info` (hardware, firmware, capacity)
 
 The Fleet API does not report Powerwall battery temperature. To show outdoor
