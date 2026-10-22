@@ -12,6 +12,15 @@
   --error: #ef4444;
   --border: #2d2d44;
   --shadow: rgba(0, 0, 0, 0.3);
+
+  /* Chart series (validated categorical slots for the dark surface) */
+  --series-home: #3987e5;
+  --series-solar: #d95926;
+  --series-battery: #199e70;
+  --series-grid: #c98500;
+  --chart-grid: #2a2a40;
+  --chart-baseline: #3d3d58;
+  --chart-muted: #8a8aa3;
 }
 
 * {

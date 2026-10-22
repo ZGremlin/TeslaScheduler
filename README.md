@@ -11,6 +11,7 @@ A full-stack application for automating Tesla Powerwall operation mode changes a
 - 🔁 **Task Retry Logic**: Failed tasks automatically retry every 10 minutes until next scheduled time
 - ⚡ **Real-time Status**: Monitor your Powerwall's battery level, power flow, and operation mode
 - 📊 **Execution Logs**: Track task execution history with success/failure status
+- 📈 **Dashboard**: Battery, power flow, system status, daily energy, power history charts, grid outages, hardware details, upcoming tasks and recent executions
 - 🎨 **Modern UI**: Beautiful, responsive interface with dark mode design
 - 🔧 **Robust Error Handling**: Automatic retry for both authentication and task execution
 
@@ -73,6 +74,20 @@ This creates the SQLite database with the following tables:
 - `scheduled_tasks` - Stores scheduled automation tasks
 - `task_logs` - Logs task execution history
 - `powerwall_config` - Stores Powerwall gateway configuration
+
+Dashboard metrics are kept in a separate database, `backend/metrics.db`, which the
+server creates automatically on startup (no init step needed). A background collector
+polls the Fleet API for every configured site and stores:
+
+- `power_snapshots` - Live readings (charge, power flow, grid/storm status, mode) every
+  `METRICS_POLL_INTERVAL_MINUTES` (default 5), pruned after `METRICS_RETENTION_DAYS` (default 90)
+- `daily_energy` - Daily energy totals from `calendar_history` (synced every 30 minutes)
+- `backup_events` - Grid outages from `calendar_history` (synced every 6 hours)
+- `site_details` - Latest `site_info` (hardware, firmware, capacity)
+
+The Fleet API does not report Powerwall battery temperature. To show outdoor
+temperature and cloud cover instead, set `SITE_LATITUDE` and `SITE_LONGITUDE`
+(fetched from Open-Meteo, no API key needed).
 
 ### 4. Start the Backend Server
 

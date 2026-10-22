@@ -58,6 +58,15 @@ db.serialize(() => {
     )
   `);
 
+	// Create app settings table (key/value JSON preferences such as the dashboard layout)
+	db.run(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
 	console.log("Database tables created successfully!");
 });
 

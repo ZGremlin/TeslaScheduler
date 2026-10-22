@@ -10,8 +10,22 @@ class DatabaseService {
 	connect() {
 		return new Promise((resolve, reject) => {
 			this.db = new sqlite3.Database(this.dbPath, (err) => {
-				if (err) reject(err);
-				else resolve();
+				if (err) {
+					reject(err);
+					return;
+				}
+				// Key/value app preferences (e.g. dashboard layout); created here so no migration is needed
+				this.db.run(
+					`CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )`,
+					(tableErr) => {
+						if (tableErr) reject(tableErr);
+						else resolve();
+					},
+				);
 			});
 		});
 	}
@@ -351,6 +365,49 @@ class DatabaseService {
 				function (err) {
 					if (err) reject(err);
 					else resolve({ id: this.lastID });
+				},
+			);
+		});
+	}
+
+	// App Settings Methods (values stored as JSON)
+	async getSetting(key) {
+		return new Promise((resolve, reject) => {
+			this.db.get("SELECT value FROM app_settings WHERE key = ?", [key], (err, row) => {
+				if (err) reject(err);
+				else resolve(row ? JSON.parse(row.value) : null);
+			});
+		});
+	}
+
+	async setSetting(key, value) {
+		return new Promise((resolve, reject) => {
+			this.db.run(
+				`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+				[key, JSON.stringify(value)],
+				function (err) {
+					if (err) reject(err);
+					else resolve({ changes: this.changes });
+				},
+			);
+		});
+	}
+
+	// Most recent logs for a site's tasks (plus logs of deleted tasks), with task names
+	async getRecentLogsForSite(siteId, limit = 8) {
+		return new Promise((resolve, reject) => {
+			this.db.all(
+				`SELECT l.*, t.name AS task_name
+         FROM task_logs l
+         LEFT JOIN scheduled_tasks t ON t.id = l.task_id
+         WHERE t.site_id = ? OR t.id IS NULL
+         ORDER BY l.executed_at DESC, l.id DESC
+         LIMIT ?`,
+				[siteId, limit],
+				(err, rows) => {
+					if (err) reject(err);
+					else resolve(rows);
 				},
 			);
 		});

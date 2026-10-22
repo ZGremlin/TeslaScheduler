@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./styles/App.css";
+import "./styles/Dashboard.css";
+import Dashboard from "./components/Dashboard";
 import AuthenticationModal from "./components/AuthenticationModal";
 import AuthLogsModal from "./components/AuthLogsModal";
 import AccountModal from "./components/AccountModal";
@@ -22,7 +24,7 @@ function App() {
 	const [authStatus, setAuthStatus] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
-	const [activeTab, setActiveTab] = useState("tasks");
+	const [activeTab, setActiveTab] = useState("dashboard");
 	const [activeSiteId, setActiveSiteId] = useState(null);
 	const [showAccountModal, setShowAccountModal] = useState(false);
 	const [credentialsVersion, setCredentialsVersion] = useState(0);
@@ -44,9 +46,10 @@ function App() {
 			setAuthStatus(authRes.data);
 			setTasks(tasksRes.data);
 
-			// Show auth modal if not authenticated
+			// Show auth modal if not authenticated; the dashboard needs a login
 			if (!authRes.data.authenticated) {
 				setShowAuthModal(true);
+				setActiveTab("tasks");
 			}
 		} catch (err) {
 			setError("Failed to load initial data");
@@ -255,6 +258,14 @@ function App() {
 
 			<nav className="app-nav">
 				<button
+					className={`nav-btn ${activeTab === "dashboard" ? "active" : ""}`}
+					onClick={() => setActiveTab("dashboard")}
+					disabled={!isAuthenticated}
+				>
+					<span className="nav-icon">📈</span>
+					<span>Dashboard</span>
+				</button>
+				<button
 					className={`nav-btn ${activeTab === "tasks" ? "active" : ""}`}
 					onClick={() => setActiveTab("tasks")}
 				>
@@ -279,6 +290,16 @@ function App() {
 			</nav>
 
 			<main className="app-main">
+				{activeTab === "dashboard" && isAuthenticated && (
+					<div className="tab-content">
+						<Dashboard
+							key={`${credentialsVersion}-${activeSiteId}`}
+							tasks={tasks}
+							onNavigate={setActiveTab}
+						/>
+					</div>
+				)}
+
 				{activeTab === "tasks" && (
 					<div className="tab-content">
 						{isAuthenticated && <TokenStatus />}

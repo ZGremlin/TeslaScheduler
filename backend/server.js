@@ -7,6 +7,9 @@ const DatabaseService = require("./database");
 const TeslaAPI = require("./teslaAPI");
 const TaskScheduler = require("./taskScheduler");
 const TokenRefreshManager = require("./tokenRefreshManager");
+const MetricsDatabase = require("./metricsDatabase");
+const MetricsCollector = require("./metricsCollector");
+const { startOfToday } = require("./metricsCollector");
 const authLogger = require("./authLogger");
 
 const app = express();
@@ -19,16 +22,21 @@ app.use(bodyParser.json());
 // Initialize services
 const db = new DatabaseService();
 const taskScheduler = new TaskScheduler();
+const metricsDb = new MetricsDatabase();
+const metricsCollector = new MetricsCollector(db, metricsDb);
 let tokenRefreshManager = null;
 
 // Initialize database and scheduler
 (async () => {
 	try {
 		await db.connect();
+		await metricsDb.connect();
 		await taskScheduler.initialize();
 
 		// Initialize token refresh manager
 		tokenRefreshManager = await new TokenRefreshManager().initialize();
+
+		metricsCollector.start();
 
 		console.log("Services initialized successfully");
 	} catch (error) {
@@ -910,6 +918,183 @@ app.post("/api/powerwall/storm-watch", async (req, res) => {
 	}
 });
 
+// ============= DASHBOARD ROUTES =============
+
+// Everything the dashboard shows for the active site, read from the metrics database.
+// The latest reading is refreshed from Tesla first if it is more than a minute old.
+app.get("/api/dashboard", async (req, res) => {
+	try {
+		const config = await db.getPowerwallConfig();
+
+		if (!config || !config.site_id) {
+			return res.status(400).json({ error: "Powerwall site not configured" });
+		}
+
+		const siteId = config.site_id;
+		const hours = Math.min(Math.max(parseInt(req.query.hours) || 24, 1), 24 * 30);
+		const days = Math.min(Math.max(parseInt(req.query.days) || 14, 1), 90);
+
+		await metricsCollector.refreshIfStale(siteId, 60 * 1000);
+
+		// Aim for ~150 points per chart, but never finer than the poll interval
+		const rangeMs = hours * 60 * 60 * 1000;
+		const bucketMs = Math.max(Math.round(rangeMs / 150), metricsCollector.pollIntervalMs);
+
+		// Fixed 24h window for the sparkline cards and gauge scales, independent of the chart range
+		const dayMs = 24 * 60 * 60 * 1000;
+		const dayBucketMs = Math.max(15 * 60 * 1000, metricsCollector.pollIntervalMs);
+
+		const [
+			current,
+			siteInfo,
+			history,
+			energy,
+			outages,
+			recentLogs,
+			weather,
+			dayHistory,
+			dayTotals,
+		] = await Promise.all([
+			metricsDb.getLatestSnapshot(siteId),
+			metricsDb.getSiteDetails(siteId),
+			metricsDb.getSnapshotHistory(siteId, Date.now() - rangeMs, bucketMs),
+			metricsDb.getDailyEnergy(siteId, days),
+			metricsDb.getBackupEvents(siteId, 5),
+			db.getRecentLogsForSite(siteId, 8),
+			metricsDb.getLatestWeather(siteId, Date.now() - 60 * 60 * 1000),
+			metricsDb.getSnapshotHistory(siteId, Date.now() - dayMs, dayBucketMs),
+			metricsCollector.getRollingEnergy(siteId, 24),
+		]);
+
+		const today = await getTodayEnergy(siteId, siteInfo?.installation_time_zone);
+		const components = siteInfo?.components || {};
+
+		res.json({
+			site: {
+				site_id: siteId,
+				site_name: config.site_name,
+				battery_count: siteInfo?.battery_count ?? null,
+				nameplate_energy: siteInfo?.nameplate_energy ?? null,
+				nameplate_power: siteInfo?.nameplate_power ?? null,
+				firmware_version: siteInfo?.version ?? null,
+				installation_date: siteInfo?.installation_date ?? null,
+				time_zone: siteInfo?.installation_time_zone ?? null,
+				utility: siteInfo?.utility ?? null,
+				battery_type: components.battery_type ?? null,
+				has_solar: components.solar ?? null,
+				has_grid: components.grid ?? null,
+				storm_mode_capable: components.storm_mode_capable ?? null,
+				off_grid_ev_reserve_percent: siteInfo?.off_grid_vehicle_charging_reserve_percent ?? null,
+				batteries: (components.batteries || []).map((battery) => ({
+					part_name: battery.part_name,
+					serial_number: battery.serial_number,
+					nameplate_energy: battery.nameplate_energy,
+					nameplate_max_charge_power: battery.nameplate_max_charge_power,
+					nameplate_max_discharge_power: battery.nameplate_max_discharge_power,
+				})),
+				gateways: (components.gateways || []).map((gateway) => ({
+					part_name: gateway.part_name,
+					serial_number: gateway.serial_number,
+					firmware_version: gateway.firmware_version,
+					is_active: gateway.is_active,
+				})),
+			},
+			current,
+			weather,
+			history,
+			history_bucket_ms: bucketMs,
+			last_24h: {
+				series: dayHistory,
+				bucket_ms: dayBucketMs,
+				totals: dayTotals,
+			},
+			today,
+			energy,
+			outages,
+			recent_logs: recentLogs,
+			collector: metricsCollector.getStatus(siteId),
+		});
+	} catch (error) {
+		console.error("Dashboard error:", error);
+		res.status(500).json({ error: error.message });
+	}
+});
+
+// Energy since midnight (site time). Tesla's daily total is the most accurate source, but it
+// only syncs every 30 minutes, so readings recorded since that sync are added on top. Without a
+// Tesla total for today, it falls back to readings alone.
+async function getTodayEnergy(siteId, timeZone) {
+	const { date, midnightMs } = startOfToday(timeZone);
+	const [teslaToday, readings] = await Promise.all([
+		metricsDb.getDailyEnergyForDate(siteId, date),
+		metricsCollector.getEnergySince(siteId, midnightMs, 60 * 60 * 1000),
+	]);
+
+	const keys = [
+		"solar_generated",
+		"home_usage",
+		"home_from_grid",
+		"grid_imported",
+		"grid_exported",
+		"battery_charged",
+		"battery_discharged",
+	];
+	let totals = readings.totals;
+	let source = "readings";
+
+	if (teslaToday) {
+		const sinceSync = await metricsCollector.getEnergySince(siteId, teslaToday.updated_at);
+		totals = Object.fromEntries(
+			keys.map((key) => [key, (teslaToday[key] || 0) + sinceSync.totals[key]]),
+		);
+		source = "tesla";
+	}
+
+	return {
+		date,
+		since: midnightMs,
+		source,
+		tesla_synced_at: teslaToday?.updated_at ?? null,
+		first_reading_at: readings.first_reading_at,
+		covered_hours: readings.covered_hours,
+		totals,
+		hourly: readings.buckets,
+	};
+}
+
+// Saved dashboard widget layout: { order: [id], hidden: [id], spans: { id: span } }
+app.get("/api/dashboard/layout", async (req, res) => {
+	try {
+		res.json({ layout: await db.getSetting("dashboard_layout") });
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
+app.put("/api/dashboard/layout", async (req, res) => {
+	try {
+		const { layout } = req.body;
+		const isIdList = (list) =>
+			Array.isArray(list) && list.length <= 50 && list.every((id) => typeof id === "string");
+
+		if (
+			!layout ||
+			!isIdList(layout.order) ||
+			!isIdList(layout.hidden) ||
+			typeof layout.spans !== "object" ||
+			Object.values(layout.spans).some((span) => ![4, 6, 8, 12].includes(span))
+		) {
+			return res.status(400).json({ error: "Invalid layout" });
+		}
+
+		const saved = { order: layout.order, hidden: layout.hidden, spans: layout.spans };
+		await db.setSetting("dashboard_layout", saved);
+		res.json({ layout: saved });
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
 // Get current configuration
 app.get("/api/config", async (req, res) => {
 	try {
@@ -1022,7 +1207,9 @@ process.on("SIGINT", async () => {
 	if (tokenRefreshManager) {
 		await tokenRefreshManager.shutdown();
 	}
+	metricsCollector.stop();
 	await taskScheduler.shutdown();
+	await metricsDb.close();
 	await db.close();
 	process.exit(0);
 });
@@ -1032,7 +1219,9 @@ process.on("SIGTERM", async () => {
 	if (tokenRefreshManager) {
 		await tokenRefreshManager.shutdown();
 	}
+	metricsCollector.stop();
 	await taskScheduler.shutdown();
+	await metricsDb.close();
 	await db.close();
 	process.exit(0);
 });

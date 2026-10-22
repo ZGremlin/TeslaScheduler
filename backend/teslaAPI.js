@@ -173,7 +173,7 @@ class TeslaAPI {
 		}
 	}
 
-	async getSiteInfo(token, siteId) {
+	async getSiteInfo(token, siteId, { notify = true } = {}) {
 		try {
 			const response = await this.client.get(
 				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/site_info`,
@@ -185,12 +185,12 @@ class TeslaAPI {
 		} catch (error) {
 			const errorMsg = error.response?.data?.error || error.message;
 			const statusCode = error.response?.status;
-			ntfy.sendPushNotification(`❌ Failed to get site info: ${errorMsg}`);
+			if (notify) ntfy.sendPushNotification(`❌ Failed to get site info: ${errorMsg}`);
 			throw new Error(`Failed to get site info (${statusCode}): ${errorMsg}`);
 		}
 	}
 
-	async getLiveStatus(token, siteId) {
+	async getLiveStatus(token, siteId, { notify = true } = {}) {
 		try {
 			const response = await this.client.get(
 				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/live_status`,
@@ -202,9 +202,31 @@ class TeslaAPI {
 		} catch (error) {
 			const errorMsg = error.response?.data?.error || error.message;
 			const statusCode = error.response?.status;
-			ntfy.sendPushNotification(`⚠ Failed to get live status: ${errorMsg}`);
+			if (notify) ntfy.sendPushNotification(`⚠ Failed to get live status: ${errorMsg}`);
 			console.warn(`Live status not available (${statusCode}): ${errorMsg}`);
 			return null;
+		}
+	}
+
+	// Historical data: kind is "energy" (energy totals) or "backup" (grid outage events)
+	async getCalendarHistory(token, siteId, { kind, period, endDate, timeZone }) {
+		try {
+			const params = { kind, period };
+			if (endDate) params.end_date = endDate;
+			if (timeZone) params.time_zone = timeZone;
+
+			const response = await this.client.get(
+				`${this.fleetBaseUrl}/api/1/energy_sites/${siteId}/calendar_history`,
+				{
+					headers: { Authorization: `Bearer ${token}` },
+					params,
+				},
+			);
+			return response.data.response;
+		} catch (error) {
+			const errorMsg = error.response?.data?.error || error.message;
+			const statusCode = error.response?.status;
+			throw new Error(`Failed to get ${kind} history (${statusCode}): ${errorMsg}`);
 		}
 	}
 

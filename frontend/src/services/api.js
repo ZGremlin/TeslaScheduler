@@ -71,6 +71,12 @@ export const getLogs = (taskId = null, limit = 100) => {
 	return api.get(`/logs?${params.toString()}`);
 };
 
+// Dashboard
+export const getDashboard = (hours = 24, days = 14) =>
+	api.get(`/dashboard?hours=${hours}&days=${days}`);
+export const getDashboardLayout = () => api.get("/dashboard/layout");
+export const saveDashboardLayout = (layout) => api.put("/dashboard/layout", { layout });
+
 // Powerwall Status
 export const getPowerwallStatus = () => api.get("/powerwall/status");
 export const getEnergySites = () => api.get("/powerwall/sites");
